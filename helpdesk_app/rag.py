@@ -156,6 +156,11 @@ def get_vectorstore() -> Chroma:
     return _vectorstore
 
 
-def buscar_contexto(consulta: str, k: int = 4) -> list[Document]:
+def buscar_contexto(consulta: str, k: int = 4, mmr: bool = False) -> list[Document]:
     vs = get_vectorstore()
-    return vs.similarity_search(consulta, k=k)
+    q = (consulta or "").strip()
+    if not q:
+        return []
+    if mmr:
+        return vs.max_marginal_relevance_search(q, k=k, fetch_k=max(k * 3, 12))
+    return vs.similarity_search(q, k=k)
