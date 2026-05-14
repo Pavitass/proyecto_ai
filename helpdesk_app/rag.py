@@ -20,6 +20,17 @@ from helpdesk_app.config import (
 
 _vectorstore: Chroma | None = None
 
+from threading import Lock
+
+_QUERY_CACHE: dict[tuple[str, int, bool], list[Document]] = {}
+_QUERY_CACHE_LOCK = Lock()
+_QUERY_CACHE_MAX = 64
+
+
+def invalidate_cache() -> None:
+    with _QUERY_CACHE_LOCK:
+        _QUERY_CACHE.clear()
+
 
 def _collection_name() -> str:
     return f"helpdesk_kb_{embedding_backend()}"
@@ -157,10 +168,21 @@ def get_vectorstore() -> Chroma:
 
 
 def buscar_contexto(consulta: str, k: int = 4, mmr: bool = False) -> list[Document]:
-    vs = get_vectorstore()
-    q = (consulta or "").strip()
+    q = (consulta or "").strip().lower()
     if not q:
         return []
+    key = (q, int(k), bool(mmr))
+    with _QUERY_CACHE_LOCK:
+        cached = _QUERY_CACHE.get(key)
+        if cached is not None:
+            return cached
+    vs = get_vectorstore()
     if mmr:
-        return vs.max_marginal_relevance_search(q, k=k, fetch_k=max(k * 3, 12))
-    return vs.similarity_search(q, k=k)
+        result = vs.max_marginal_relevance_search(q, k=k, fetch_k=max(k * 3, 12))
+    else:
+        result = vs.similarity_search(q, k=k)
+    with _QUERY_CACHE_LOCK:
+        if len(_QUERY_CACHE) >= _QUERY_CACHE_MAX:
+            _QUERY_CACHE.pop(next(iter(_QUERY_CACHE)))
+        _QUERY_CACHE[key] = result
+    return result
