@@ -16,3 +16,5 @@ duckduckgo-search>=6.0.0
 sentence-transformers>=3.0.0
 # Automatización local (opcional): POST /api/desktop/exec con HELPDESK_DESKTOP_PY_EXEC=1
 pyautogui>=0.9.54
+mss>=9.0.0
+Pillow>=10.0.0
