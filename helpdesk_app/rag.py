@@ -186,3 +186,12 @@ def buscar_contexto(consulta: str, k: int = 4, mmr: bool = False) -> list[Docume
             _QUERY_CACHE.pop(next(iter(_QUERY_CACHE)))
         _QUERY_CACHE[key] = result
     return result
+
+
+def warmup() -> None:
+    """Pre-build the vectorstore so the first user query doesn't pay the cold-start cost."""
+    try:
+        get_vectorstore()
+    except Exception as e:
+        import logging
+        logging.getLogger("helpdesk.rag").warning("RAG warmup skipped: %s", e)

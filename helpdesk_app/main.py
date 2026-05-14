@@ -49,6 +49,8 @@ def get_graph():
 @app.on_event("startup")
 def startup():
     db.init_db()
+    from helpdesk_app import rag
+    rag.warmup()
 
 
 @app.get("/", response_class=HTMLResponse)
