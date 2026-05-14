@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mesa de ayuda TI · Agente RAG</title>
+  <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" crossorigin="anonymous"></script>
+  <script src="/static/livesheet.js" defer></script>
+</head>
+<body>
+  <script>
+    window.__HELPDESK_BASE__ = {{ helpdesk_base_url | tojson }};
+  </script>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">HD</span>
+        <div><strong>HelpDesk IA</strong></div>
+      </div>
+      <div class="panel">
+        <h3>Tickets recientes</h3>
+        <div id="tickets" class="tickets"></div>
+      </div>
+      <p class="foot muted">Sesión: <code id="tid"></code></p>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <h1>Asistente de soporte</h1>
+        <button type="button" class="btn-ghost" id="btnNewThread" title="Nueva conversación">Nueva sesión</button>
+      </header>
+      <div class="quick-row" id="quickRow" aria-label="Accesos rápidos"></div>
+      <div id="log" class="chat-log"></div>
+      <div id="liveSheet" class="live-sheet live-sheet--empty" aria-expanded="false">
+        <button type="button" id="liveSheetTab" class="live-sheet-tab" aria-expanded="false">
+          Plan en vivo
+        </button>
+        <div id="liveSheetPanel" class="live-sheet-panel" role="region" aria-label="Plan en vivo">
+          <div class="live-sheet-head">
+            <strong>Panel interactivo</strong>
+            <span class="live-sheet-muted">Pasos, Kanban y sliders (se pliega con la pestaña inferior)</span>
+          </div>
+          <div id="liveSheetScroll" class="live-sheet-scroll">
+            <div id="liveSheetPlan"></div>
+            <div id="liveSheetKanban"></div>
+            <div id="liveSheetSliders"></div>
+          </div>
+        </div>
+      </div>
+      <div class="composer-wrap">
+        <div id="guidedBar" class="guided-bar hidden" role="region" aria-label="Modo guiado paso a paso">
+          <div class="guided-bar-inner">
+            <div class="guided-bar-top">
+              <strong>Modo guiado</strong>
+              <span id="guidedStepLabel" class="guided-step-label"></span>
+            </div>
+            <p id="guidedStepText" class="guided-step-text"></p>
+            <div class="guided-actions">
+              <button type="button" class="btn-ghost btn-tiny" id="btnGuidedCapture">Capturar pantalla (este paso)</button>
+              <button type="button" class="btn-ghost btn-tiny" id="btnGuidedNext">Hecho, siguiente instrucción</button>
+              <button type="button" class="btn-ghost btn-tiny" id="btnGuidedStuck">Me atasco</button>
+              <button type="button" class="btn-ghost btn-tiny" id="btnGuidedClose">Salir</button>
+            </div>
+          </div>
+        </div>
+        <div class="composer-tools" id="composerTools">
+          <button type="button" class="btn-ghost btn-tiny" id="btnGuided" title="Seguir un plan de acción paso a paso">Guiado</button>
+          <input type="file" id="shotFile" accept="image/*" hidden multiple />
+          <button type="button" class="btn-ghost btn-tiny" id="btnShotFile" title="Adjuntar hasta 2 imágenes">Imagen</button>
+          <button type="button" class="btn-ghost btn-tiny" id="btnShotScreen" title="Capturar una ventana o pantalla">Pantalla</button>
+          <span id="shotPreview" class="shot-preview"></span>
+        </div>
+        <video id="capVideo" playsinline muted style="display:none;width:0;height:0;"></video>
+        <canvas id="capCanvas" style="display:none;"></canvas>
+        <form id="f" class="composer" autocomplete="off">
+          <div class="composer-input-shell">
+            <textarea
+              id="msg"
+              rows="1"
+              placeholder="Mensaje…"
+              required
+              maxlength="8000"
+            ></textarea>
+          </div>
+          <button type="submit" id="btnSend" class="composer-send" aria-label="Enviar mensaje">Enviar</button>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <button type="button" class="close-x" id="modalClose" aria-label="Cerrar">&times;</button>
+      <h2 id="modalTitle">Ticket</h2>
+      <div class="modal-actions" id="modalActions" hidden>
+        <button type="button" class="btn-danger" id="btnDeleteTicket">Eliminar ticket</button>
+      </div>
+      <div id="modalBody" class="md-content"></div>
+    </div>
+  </div>
+
+  <script>
+    const tidKey = "helpdesk_thread_id";
+    const QUICK = [
+      { label: "VPN no conecta", text: "La VPN no conecta desde casa. ¿Qué pasos sigo?" },
+      { label: "Correo / Outlook", text: "No me llegan correos nuevos en Outlook. ¿Cómo lo reviso?" },
+      { label: "Wi‑Fi / red", text: "Tengo internet pero no accedo a recursos internos. Ayuda." },
+      { label: "Impresora", text: "La impresora de red no imprime y hay documentos en cola." },
+      { label: "Abrir ticket", text: "Quiero registrar un ticket: no tengo acceso a una carpeta compartida." },
+    ];
+
+    const urlParams = new URLSearchParams(location.search);
+    window.__HELPDESK_IN_ELECTRON__ =
+      navigator.userAgent.includes("Electron") || urlParams.get("electron_app") === "1";
+    if (window.__HELPDESK_IN_ELECTRON__) {
+      document.documentElement.classList.add("electron-app");
+    }
+
+    function uuid() {
+      return crypto.randomUUID();
+    }
+    let threadId = localStorage.getItem(tidKey) || uuid();
+    const qpThread = urlParams.get("thread");
+    if (qpThread && qpThread.trim().length >= 8) {
+      threadId = qpThread.trim();
+    }
+    localStorage.setItem(tidKey, threadId);
+    const tidEl = document.getElementById("tid");
+    function refreshTidDisplay() {
+      tidEl.textContent = threadId.slice(0, 8) + "…";
+    }
+    refreshTidDisplay();
+
+    const log = document.getElementById("log");
+    const btnSend = document.getElementById("btnSend");
+    const msgTa = document.getElementById("msg");
+    function syncMsgTextareaHeight() {
+      if (!msgTa) return;
+      msgTa.style.height = "auto";
+      const cap = 132;
+      msgTa.style.height = Math.min(msgTa.scrollHeight, cap) + "px";
+    }
+    if (msgTa) {
+      msgTa.addEventListener("input", syncMsgTextareaHeight);
+      syncMsgTextareaHeight();
+    }
+    const pendingShots = [];
+    let visionAvailable = false;
+    window.__HELPDESK_DESKTOP_PY__ = false;
+    window.__HELPDESK_DESKTOP_FORCE_ACK__ = false;
+
+    async function loadCapabilities() {
+      try {
+        const r = await fetch("/api/capabilities");
+        const j = await r.json();
+        visionAvailable = !!j.vision;
+        const bf = document.getElementById("btnShotFile");
+        const bs = document.getElementById("btnShotScreen");
+        [bf, bs].forEach((b) => {
+          b.disabled = !visionAvailable;
+        });
+        bf.title = visionAvailable
+          ? "Adjuntar imagen (máx. 2)"
+          : "Configura visión (GOOGLE_API_KEY o OPENAI_API_KEY / HELPDESK_VISION_OPENAI_*)";
+        bs.title = visionAvailable
+          ? "Capturar ventana o pantalla (1 frame)"
+          : "Configura visión (GOOGLE_API_KEY o OPENAI_API_KEY / HELPDESK_VISION_OPENAI_*)";
+        window.__HELPDESK_DESKTOP_PY__ = !!j.desktop_py_exec;
+        window.__HELPDESK_DESKTOP_FORCE_ACK__ = !!j.desktop_force_human_ack;
+        updateDesktopHint();
+      } catch (_) {
+        /* capacidades opcionales */
+      }
+    }
+
+    function b64FromDataUrl(dataUrl) {
+      const i = dataUrl.indexOf(",");
+      return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+    }
+
+    function scaleDataUrl(dataUrl, maxW) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width;
+          let h = img.height;
+          if (w > maxW) {
+            h = Math.round((h * maxW) / w);
+            w = maxW;
+          }
+          const c = document.getElementById("capCanvas");
+          c.width = w;
+          c.height = h;
+          const ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = () => reject(new Error("imagen"));
+        img.src = dataUrl;
+      });
+    }
+
+    function renderShotPreview() {
+      const el = document.getElementById("shotPreview");
+      el.innerHTML = "";
+      pendingShots.forEach((url, i) => {
+        const wrap = document.createElement("span");
+        wrap.className = "shot-thumb-wrap";
+        const img = document.createElement("img");
+        img.className = "shot-thumb";
+        img.src = url;
+        img.alt = "Captura " + (i + 1);
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "shot-remove";
+        x.textContent = "×";
+        x.title = "Quitar";
+        x.addEventListener("click", (e) => {
+          e.preventDefault();
+          pendingShots.splice(i, 1);
+          renderShotPreview();
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(x);
+        el.appendChild(wrap);
+      });
+    }
+
+    document.getElementById("btnShotFile").addEventListener("click", () => {
+      if (!visionAvailable) return;
+      document.getElementById("shotFile").click();
+    });
+    document.getElementById("shotFile").addEventListener("change", async (ev) => {
+      const files = Array.from(ev.target.files || []).slice(0, 2);
+      ev.target.value = "";
+      if (!files.length || !visionAvailable) return;
+      for (const f of files) {
+        if (pendingShots.length >= 2) break;
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = rej;
+          r.readAsDataURL(f);
+        });
+        try {
+          pendingShots.push(await scaleDataUrl(dataUrl, 1280));
+        } catch (_) {
+          pendingShots.push(String(dataUrl));
+        }
+      }
+      renderShotPreview();
+    });
+
+    document.getElementById("btnShotScreen").addEventListener("click", async () => {
+      if (!visionAvailable) return;
+      if (pendingShots.length >= 2) {
+        alert("Máximo 2 capturas. Quita una en las miniaturas.");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const v = document.getElementById("capVideo");
+        v.srcObject = stream;
+        await v.play();
+        await new Promise((r) => setTimeout(r, 350));
+        const c = document.getElementById("capCanvas");
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(v, 0, 0);
+        stream.getTracks().forEach((t) => t.stop());
+        v.srcObject = null;
+        let dataUrl = c.toDataURL("image/jpeg", 0.82);
+        dataUrl = await scaleDataUrl(dataUrl, 1280);
+        pendingShots.push(dataUrl);
+        renderShotPreview();
+      } catch (e) {
+        if (String(e.name || e) !== "NotAllowedError") alert("Captura cancelada o no disponible: " + e.message);
+      }
+    });
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function formatTime() {
+      return new Date().toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function normalizeMarkdownTasks(md) {
+      if (!md) return "";
+      let s = String(md);
+      s = s.replace(/^(\s*)[\*]\s+\[\s*\]\s+/gm, "$1- [ ] ");
+      s = s.replace(/^(\s*)[\*]\s+\[x\]\s+/gim, "$1- [x] ");
+      s = s.replace(/^(\s*)[\*]\s+\[X\]\s+/g, "$1- [x] ");
+      return s;
+    }
+
+    function renderMarkdown(md) {
+      if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+        return `<div class="plain">${escapeHtml(md)}</div>`;
+      }
+      try {
+        marked.setOptions({ gfm: true, breaks: true });
+        const raw = marked.parse(normalizeMarkdownTasks(md));
+        return DOMPurify.sanitize(raw, {
+          ADD_TAGS: ["details", "summary", "input"],
+          ADD_ATTR: ["target", "rel", "type", "checked", "disabled", "class", "id", "name"],
+        });
+      } catch {
+        return `<div class="plain">${escapeHtml(md)}</div>`;
+      }
+    }
+
+    function postProcessMd(root) {
+      root.querySelectorAll('a[href^="http"]').forEach((a) => {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      });
+    }
+
+    /** Convierte listas ordenadas largas en pasos visuales (solo en burbujas del asistente). */
+    function enhanceInteractiveSteps(container) {
+      const scope =
+        container.classList && container.classList.contains("md-content")
+          ? container
+          : container.querySelector(".md-content") || container;
+      scope.querySelectorAll("ol").forEach((ol) => {
+        if (ol.children.length >= 2) ol.classList.add("interactive-steps");
+      });
+      postProcessMd(scope);
+    }
+
+    function addMessage(role, contentHtmlOrText, { isMarkdown = false } = {}) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg-wrap " + role;
+      const meta = document.createElement("div");
+      meta.className = "msg-meta";
+      meta.innerHTML =
+        role === "user"
+          ? `<span>Tú</span><span class="dot"></span><span>${formatTime()}</span>`
+          : `<span class="dot"></span><span>Asistente TI</span><span>${formatTime()}</span>`;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble " + role;
+      const inner = document.createElement("div");
+      inner.className = isMarkdown ? "md-content" : "plain";
+      if (isMarkdown) inner.innerHTML = contentHtmlOrText;
+      else inner.textContent = contentHtmlOrText;
+      bubble.appendChild(inner);
+      wrap.appendChild(meta);
+      wrap.appendChild(bubble);
+      log.appendChild(wrap);
+      if (isMarkdown) {
+        enhanceInteractiveSteps(bubble);
+        if (role === "assistant") wireAssistantTaskCheckboxes(bubble);
+      }
+      log.scrollTop = log.scrollHeight;
+      return wrap;
+    }
+
+    function addThinkingCard() {
+      const wrap = document.createElement("div");
+      wrap.className = "msg-wrap assistant";
+      wrap.innerHTML = `
+        <div class="msg-meta"><span class="dot"></span><span>Asistente TI</span><span>${formatTime()}</span></div>
+        <div class="thinking-card" id="thinkingCard">
+          <div class="thinking-head">
+            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span id="thinkingLabel">Orquestando agente…</span>
+          </div>
+          <div class="flow-steps">
+            <div class="fs active" data-step="0">Analizar tu mensaje</div>
+            <div class="fs" data-step="1">Herramientas (KB / tickets)</div>
+            <div class="fs" data-step="2">Respuesta estructurada</div>
+          </div>
+        </div>`;
+      log.appendChild(wrap);
+      log.scrollTop = log.scrollHeight;
+      const label = wrap.querySelector("#thinkingLabel");
+      const steps = wrap.querySelectorAll(".fs");
+      const msgs = ["Orquestando agente…", "Consultando herramientas y KB…", "Generando pasos y resumen…"];
+      let i = 0;
+      let stepIdx = 0;
+      const t1 = setInterval(() => {
+        i = (i + 1) % msgs.length;
+        if (label) label.textContent = msgs[i];
+      }, 2200);
+      const t2 = setInterval(() => {
+        if (stepIdx < 3) {
+          steps.forEach((s, j) => {
+            s.classList.toggle("active", j === stepIdx);
+            s.classList.toggle("done", j < stepIdx);
+          });
+          stepIdx++;
+        }
+      }, 1400);
+      return { wrap, clear: () => { clearInterval(t1); clearInterval(t2); wrap.remove(); } };
+    }
+
+    let currentModalTicketId = null;
+
+    async function deleteTicketById(id) {
+      if (!confirm("¿Eliminar este ticket? No se puede deshacer.")) return false;
+      const r = await fetch("/api/tickets/" + encodeURIComponent(id), { method: "DELETE" });
+      if (r.status === 204) {
+        loadTickets();
+        return true;
+      }
+      let msg = "Error al eliminar";
+      try {
+        const j = await r.json();
+        msg = j.detail || msg;
+      } catch (_) {}
+      alert(msg);
+      return false;
+    }
+
+    async function loadTickets() {
+      const box = document.getElementById("tickets");
+      try {
+        const r = await fetch("/api/tickets");
+        const j = await r.json();
+        box.innerHTML = "";
+        (j.tickets || []).forEach((t) => {
+          const row = document.createElement("div");
+          row.className = "ticket-row";
+          const el = document.createElement("button");
+          el.type = "button";
+          el.className = "ticket";
+          el.innerHTML = `<strong>${escapeHtml(t.titulo)}</strong><span class="muted">${escapeHtml(t.prioridad)} · ${escapeHtml(t.estado)}</span><code>${escapeHtml(t.id.slice(0, 8))}…</code>`;
+          el.addEventListener("click", () => openTicketModal(t.id));
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "btn-ticket-del";
+          del.title = "Eliminar ticket";
+          del.setAttribute("aria-label", "Eliminar");
+          del.textContent = "×";
+          del.addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteTicketById(t.id);
+          });
+          row.appendChild(el);
+          row.appendChild(del);
+          box.appendChild(row);
+        });
+      } catch (e) {
+        box.textContent = "No se pudieron cargar tickets.";
+      }
+    }
+
+    async function openTicketModal(id) {
+      currentModalTicketId = id;
+      const bd = document.getElementById("modalBackdrop");
+      const body = document.getElementById("modalBody");
+      const title = document.getElementById("modalTitle");
+      const modalActions = document.getElementById("modalActions");
+      body.innerHTML = "<p class=\"muted\">Cargando…</p>";
+      title.textContent = "Ticket";
+      modalActions.hidden = true;
+      bd.classList.add("open");
+      bd.setAttribute("aria-hidden", "false");
+      try {
+        const r = await fetch("/api/tickets/" + encodeURIComponent(id));
+        const t = await r.json();
+        if (!r.ok) throw new Error(t.detail || "Error");
+        title.textContent = t.titulo;
+        modalActions.hidden = false;
+        const mdParts = [
+          `**ID:** \`${t.id}\``,
+          `**Estado:** ${t.estado}`,
+          `**Prioridad:** ${t.prioridad} · **Categoría:** ${t.categoria}`,
+          "",
+          "### Descripción",
+          t.descripcion_usuario,
+          "",
+          "### Pasos sugeridos",
+          t.pasos_sugeridos,
+          "",
+          "### Fuentes KB",
+          Array.isArray(t.fuentes_kb) ? t.fuentes_kb.map((x) => "- " + x).join("\n") : String(t.fuentes_kb || ""),
+          t.motivo_escalacion ? "\n### Escalado\n" + t.motivo_escalacion : "",
+        ];
+        if (t.resolucion_final) {
+          mdParts.push("", "### Lección registrada", t.resolucion_final);
+        }
+        if (t.resolved_at) {
+          mdParts.push("", "### Fecha de resolución", t.resolved_at);
+        }
+        const md = mdParts.join("\n");
+        body.innerHTML = renderMarkdown(md);
+        enhanceInteractiveSteps(body);
+      } catch (e) {
+        body.innerHTML = `<p class="plain">Error: ${escapeHtml(e.message)}</p>`;
+        modalActions.hidden = true;
+      }
+    }
+
+    function closeModal() {
+      currentModalTicketId = null;
+      const bd = document.getElementById("modalBackdrop");
+      document.getElementById("modalActions").hidden = true;
+      bd.classList.remove("open");
+      bd.setAttribute("aria-hidden", "true");
+    }
+
+    document.getElementById("btnDeleteTicket").addEventListener("click", async () => {
+      if (!currentModalTicketId) return;
+      if (await deleteTicketById(currentModalTicketId)) closeModal();
+    });
+
+    document.getElementById("modalClose").addEventListener("click", closeModal);
+    document.getElementById("modalBackdrop").addEventListener("click", (e) => {
+      if (e.target.id === "modalBackdrop") closeModal();
+    });
+
+    const qr = document.getElementById("quickRow");
+    QUICK.forEach((q) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "quick-chip";
+      b.textContent = q.label;
+      b.addEventListener("click", () => {
+        document.getElementById("msg").value = q.text;
+        document.getElementById("msg").focus();
+        syncMsgTextareaHeight();
+      });
+      qr.appendChild(b);
+    });
+
+    document.getElementById("btnNewThread").addEventListener("click", () => {
+      threadId = uuid();
+      localStorage.setItem(tidKey, threadId);
+      refreshTidDisplay();
+      if (window.LiveSheet && typeof LiveSheet.reset === "function") LiveSheet.reset();
+      log.innerHTML = "";
+      lastAssistantRawReply = "";
+      exitGuidedMode();
+      addMessage(
+        "assistant",
+        renderMarkdown(
+          "## Nueva sesión iniciada\n\nDescribe tu incidencia o usa un **acceso rápido**. En cuanto haya un caso concreto, el asistente **abrirá un ticket** y te dará el **ID** mientras te guía.\n\n- [ ] Ya tengo claro qué falla\n- [ ] Tengo a mano mensajes de error o capturas"
+        ),
+        { isMarkdown: true }
+      );
+    });
+
+    let lastAssistantRawReply = "";
+    let guidedActive = false;
+    let guidedSteps = [];
+    let guidedStepIndex = 0;
+    let guidedAdvanceAfterReply = false;
+
+    const guidedBar = document.getElementById("guidedBar");
+    const guidedStepLabel = document.getElementById("guidedStepLabel");
+    const guidedStepText = document.getElementById("guidedStepText");
+    const btnGuided = document.getElementById("btnGuided");
+
+    function extractGuidedSteps(md) {
+      const clean =
+        window.LiveSheet && typeof window.LiveSheet.strip === "function"
+          ? window.LiveSheet.strip(md || "")
+          : String(md || "");
+      const out = [];
+      const h = clean.match(/^##\s*plan\b[^\n]*/im);
+      if (!h) return out;
+      const start = clean.indexOf(h[0]) + h[0].length;
+      const tail = clean.slice(start);
+      const n2 = tail.search(/^##\s+/m);
+      const chunk = (n2 >= 0 ? tail.slice(0, n2) : tail).split("\n");
+      for (const raw of chunk) {
+        const line = raw.trim();
+        const num = /^(\d+)\.\s+(.+)$/.exec(line);
+        if (num) {
+          out.push({ kind: "num", text: num[2].trim() });
+          continue;
+        }
+        const task = /^-\s+\[([ xX])\]\s+(.+)$/.exec(line);
+        if (task) {
+          out.push({ kind: "task", text: task[2].trim() });
+        }
+      }
+      return out;
+    }
+
+    function syncGuidedBarUi() {
+      if (!guidedBar) return;
+      if (!guidedActive || !guidedSteps.length) {
+        guidedBar.classList.add("hidden");
+        return;
+      }
+      guidedBar.classList.remove("hidden");
+      if (guidedStepLabel) {
+        guidedStepLabel.textContent = "Paso " + (guidedStepIndex + 1) + " de " + guidedSteps.length;
+      }
+      const step = guidedSteps[guidedStepIndex];
+      if (guidedStepText) guidedStepText.textContent = step ? step.text : "";
+    }
+
+    function guidedPrefix() {
+      return window.__HELPDESK_IN_ELECTRON__ ? "[Modo guiado · Electron]\n\n" : "[Modo guiado]\n\n";
+    }
+
+    function exitGuidedMode() {
+      guidedActive = false;
+      guidedAdvanceAfterReply = false;
+      if (btnGuided) btnGuided.classList.remove("btn-guided-on");
+      if (guidedBar) guidedBar.classList.add("hidden");
+    }
+
+    if (btnGuided) {
+      btnGuided.addEventListener("click", () => {
+        guidedActive = !guidedActive;
+        btnGuided.classList.toggle("btn-guided-on", guidedActive);
+        if (!guidedActive) {
+          if (guidedBar) guidedBar.classList.add("hidden");
+          return;
+        }
+        guidedSteps = extractGuidedSteps(lastAssistantRawReply);
+        guidedStepIndex = 0;
+        if (!guidedSteps.length) {
+          guidedActive = false;
+          btnGuided.classList.remove("btn-guided-on");
+          alert(
+            "No hay un «## Plan de acción» en la última respuesta del asistente. Describe tu incidencia y espera a que el asistente proponga un plan; luego vuelve a activar Modo guiado."
+          );
+          return;
+        }
+        syncGuidedBarUi();
+      });
+    }
+
+    const btnGuidedNext = document.getElementById("btnGuidedNext");
+    if (btnGuidedNext) {
+      btnGuidedNext.addEventListener("click", async () => {
+        if (!guidedActive || !guidedSteps.length) return;
+        const step = guidedSteps[guidedStepIndex];
+        const msg =
+          guidedPrefix() +
+          "He completado el paso " +
+          (guidedStepIndex + 1) +
+          " de " +
+          guidedSteps.length +
+          ': "' +
+          step.text.slice(0, 240) +
+          (step.text.length > 240 ? "…" : "") +
+          '". Dame la **siguiente instrucción** muy concreta (micro-paso) y dime si necesitas **captura de pantalla** y de qué.';
+        addMessage("user", msg, { isMarkdown: false });
+        guidedAdvanceAfterReply = true;
+        try {
+          await submitChatCore({ message: msg, screenshots: [], interaction: undefined });
+        } catch (_) {
+          guidedAdvanceAfterReply = false;
+        }
+      });
+    }
+
+    const btnGuidedCapture = document.getElementById("btnGuidedCapture");
+    if (btnGuidedCapture) {
+      btnGuidedCapture.addEventListener("click", () => {
+        if (!guidedActive || !guidedSteps.length) return;
+        const step = guidedSteps[guidedStepIndex];
+        const ta = document.getElementById("msg");
+        const hint =
+          (window.__HELPDESK_IN_ELECTRON__ ? "[Modo guiado · Electron] " : "[Modo guiado] ") +
+          "Captura del paso " +
+          (guidedStepIndex + 1) +
+          " (" +
+          (step ? step.text.slice(0, 120) : "") +
+          (step && step.text.length > 120 ? "…" : "") +
+          "): ";
+        ta.value = hint;
+        ta.focus();
+        syncMsgTextareaHeight();
+        document.getElementById("btnShotScreen").click();
+      });
+    }
+
+    const btnGuidedStuck = document.getElementById("btnGuidedStuck");
+    if (btnGuidedStuck) {
+      btnGuidedStuck.addEventListener("click", () => {
+        if (!guidedActive || !guidedSteps.length) return;
+        const ta = document.getElementById("msg");
+        ta.value =
+          guidedPrefix() +
+          "En el paso " +
+          (guidedStepIndex + 1) +
+          ' ("' +
+          guidedSteps[guidedStepIndex].text.slice(0, 200) +
+          (guidedSteps[guidedStepIndex].text.length > 200 ? "…" : "") +
+          '") me atasco: ';
+        ta.focus();
+        syncMsgTextareaHeight();
+      });
+    }
+
+    const btnGuidedClose = document.getElementById("btnGuidedClose");
+    if (btnGuidedClose) {
+      btnGuidedClose.addEventListener("click", () => {
+        exitGuidedMode();
+      });
+    }
+
+    function getNativeDesk() {
+      return typeof window.nativeDesk !== "undefined" &&
+        window.nativeDesk &&
+        typeof window.nativeDesk.runAction === "function"
+        ? window.nativeDesk
+        : null;
+    }
+
+    function desktopNeedsHumanAck(action) {
+      return !!(window.__HELPDESK_DESKTOP_FORCE_ACK__ || action.sensitive);
+    }
+
+    async function desktopExecOneAction(action, hitlAckEl) {
+      const nd = getNativeDesk();
+      const ackNeeded = desktopNeedsHumanAck(action);
+      if (ackNeeded && nd) {
+        const msg =
+          "Paso " +
+          (action.sensitive ? "sensible" : "con confirmación obligatoria en el servidor") +
+          ". ¿Ejecutar en el escritorio?";
+        if (!confirm(msg)) return "cancelado";
+      }
+      if (nd) {
+        return (await nd.runAction(action)) || null;
+      }
+      if (window.__HELPDESK_DESKTOP_PY__) {
+        if (ackNeeded && (!hitlAckEl || !hitlAckEl.checked)) {
+          return "Marca la confirmación (human-in-the-loop) para ejecutar con PyAutoGUI.";
+        }
+        try {
+          const r = await fetch("/api/desktop/exec", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: action,
+              human_ack: !!(ackNeeded && hitlAckEl && hitlAckEl.checked),
+            }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            const d = j.detail;
+            return typeof d === "string"
+              ? d
+              : Array.isArray(d)
+                ? d.map((e) => e.msg || JSON.stringify(e)).join("; ")
+                : JSON.stringify(j);
+          }
+        } catch (e) {
+          return String(e.message || e);
+        }
+        return null;
+      }
+      return "No hay ejecutor: abre la app Electron o activa PyAutoGUI en localhost.";
+    }
+
+    function desktopActionLabel(a) {
+      if (!a || !a.type) return "(acción)";
+      const t = a.type;
+      if (t === "wait") return "Espera " + (a.delayMs || 0) + " ms";
+      if (t === "hotkey") return "Atajo: " + (Array.isArray(a.keys) ? a.keys.join("+") : "");
+      if (t === "type") return "Escribir: " + String(a.text || "").slice(0, 72) + (String(a.text || "").length > 72 ? "…" : "");
+      if (t === "move") return "Mover ratón (fracción pantalla)";
+      if (t === "click") return "Clic " + (a.button || "left");
+      return t;
+    }
+
+    function updateDesktopHint() {
+      let el = document.getElementById("desktopAutomationHint");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "desktopAutomationHint";
+        el.className = "desktop-automation-hint";
+        const log = document.getElementById("log");
+        if (log && log.parentNode) log.parentNode.insertBefore(el, log);
+        else return;
+      }
+      const ok = !!(getNativeDesk() || window.__HELPDESK_DESKTOP_PY__);
+      el.hidden = ok;
+      if (!ok) {
+        el.textContent =
+          "Automatización del escritorio inactiva: en el navegador define HELPDESK_DESKTOP_PY_EXEC=1 y reinicia el servidor Python, o abre la app Electron y concede Accesibilidad (macOS) al binario de Electron.";
+      }
+    }
+
+    function attachSourcesToolsPanel(msgWrap, j) {
+      const srcs = (j.sources || []).filter(function (s) {
+        return s && (s.label || s.url);
+      });
+      const tools = j.tool_calls_used || [];
+      if (!srcs.length && !tools.length) return;
+      const panel = document.createElement("div");
+      panel.className = "msg-trace-panel";
+      const sum = document.createElement("details");
+      sum.className = "msg-trace-details";
+      const cap = document.createElement("summary");
+      cap.textContent =
+        "Fuentes y herramientas" +
+        (j.web_search_used ? " (incluye búsqueda web)" : "") +
+        " · " +
+        (srcs.length + tools.length) +
+        " ítems";
+      sum.appendChild(cap);
+      const body = document.createElement("div");
+      body.className = "msg-trace-body";
+      if (tools.length) {
+        const h = document.createElement("p");
+        h.className = "msg-trace-h muted";
+        h.textContent = "Herramientas usadas en este turno";
+        body.appendChild(h);
+        tools.forEach(function (t) {
+          const row = document.createElement("div");
+          row.className = "trace-tool-row";
+          const name = document.createElement("code");
+          name.className = "trace-tool-name";
+          name.textContent = t.name || "";
+          const args = document.createElement("pre");
+          args.className = "trace-tool-args muted";
+          args.textContent = t.args_preview || "";
+          row.appendChild(name);
+          row.appendChild(args);
+          body.appendChild(row);
+        });
+      }
+      if (srcs.length) {
+        const h2 = document.createElement("p");
+        h2.className = "msg-trace-h muted";
+        h2.textContent = "Fuentes (KB / web)";
+        body.appendChild(h2);
+        srcs.forEach(function (s) {
+          const chip = document.createElement("div");
+          chip.className = "source-chip";
+          const kind = document.createElement("span");
+          kind.className = "source-kind";
+          kind.textContent = s.kind === "web" ? "Web" : "KB";
+          const lab = document.createElement("div");
+          lab.className = "source-label";
+          lab.textContent = s.label || s.url || "";
+          chip.appendChild(kind);
+          chip.appendChild(lab);
+          if (s.url) {
+            const a = document.createElement("a");
+            a.href = s.url;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.className = "source-url";
+            a.textContent = "Abrir enlace";
+            chip.appendChild(a);
+          }
+          if (s.detail) {
+            const d = document.createElement("p");
+            d.className = "source-detail muted";
+            d.textContent = s.detail;
+            chip.appendChild(d);
+          }
+          body.appendChild(chip);
+        });
+      }
+      sum.appendChild(body);
+      panel.appendChild(sum);
+      msgWrap.appendChild(panel);
+    }
+
+    function attachDesktopPlanPanel(msgWrap, plan) {
+      const actions = plan.actions || [];
+      if (!actions.length) return;
+      const canExec = !!(getNativeDesk() || window.__HELPDESK_DESKTOP_PY__);
+      const panel = document.createElement("div");
+      panel.className = "msg-desktop-panel";
+      const sub = document.createElement("div");
+      sub.className = "msg-desktop-panel-inner";
+      const title = document.createElement("p");
+      title.className = "msg-desktop-title muted";
+      title.textContent = "Plan en tu equipo (solo si entiendes cada paso)";
+      sub.appendChild(title);
+      if (plan.rationale) {
+        const rat = document.createElement("p");
+        rat.className = "desktop-rationale muted";
+        rat.textContent = plan.rationale;
+        sub.appendChild(rat);
+      }
+      const showHitl = !!(window.__HELPDESK_DESKTOP_PY__ || window.__HELPDESK_DESKTOP_FORCE_ACK__);
+      let hitlAck = null;
+      if (showHitl) {
+        const row = document.createElement("div");
+        row.className = "desktop-row desktop-hitl-row";
+        const lab = document.createElement("label");
+        lab.className = "desktop-hitl-label";
+        hitlAck = document.createElement("input");
+        hitlAck.type = "checkbox";
+        lab.appendChild(hitlAck);
+        lab.appendChild(
+          document.createTextNode(
+            " Confirmo ejecutar el siguiente paso en este equipo (PyAutoGUI / pasos sensibles)."
+          )
+        );
+        row.appendChild(lab);
+        sub.appendChild(row);
+      }
+      const yoloRow = document.createElement("div");
+      yoloRow.className = "desktop-row";
+      const yoloMain = document.createElement("input");
+      yoloMain.type = "checkbox";
+      const yoloLab = document.createElement("label");
+      yoloLab.className = "desktop-hitl-label";
+      yoloLab.appendChild(yoloMain);
+      yoloLab.appendChild(document.createTextNode(" YOLO (un aviso al inicio; pausa entre pasos)"));
+      yoloRow.appendChild(yoloLab);
+      sub.appendChild(yoloRow);
+      const yoloSensRow = document.createElement("div");
+      yoloSensRow.className = "desktop-row";
+      yoloSensRow.hidden = true;
+      const hitlYolo = document.createElement("input");
+      hitlYolo.type = "checkbox";
+      const yoloSensLab = document.createElement("label");
+      yoloSensLab.className = "desktop-hitl-label";
+      yoloSensLab.appendChild(hitlYolo);
+      yoloSensLab.appendChild(
+        document.createTextNode(" En YOLO, incluir pasos sensibles sin otro aviso (riesgo).")
+      );
+      yoloSensRow.appendChild(yoloSensLab);
+      sub.appendChild(yoloSensRow);
+      yoloMain.addEventListener("change", () => {
+        yoloSensRow.hidden = !yoloMain.checked;
+        if (!yoloMain.checked) hitlYolo.checked = false;
+      });
+      const stepsEl = document.createElement("div");
+      stepsEl.className = "msg-desktop-steps";
+      const logEl = document.createElement("pre");
+      logEl.className = "msg-desktop-log muted";
+      function dlog(line) {
+        logEl.textContent += (logEl.textContent ? "\n" : "") + line;
+      }
+      const stepControls = [];
+      actions.forEach((a, ix) => {
+        const div = document.createElement("div");
+        div.className = "desktop-step";
+        const lbl = document.createElement("div");
+        lbl.className = "desktop-step-label";
+        lbl.textContent = ix + 1 + ") " + desktopActionLabel(a);
+        div.appendChild(lbl);
+        const meta = document.createElement("code");
+        meta.className = "desktop-step-meta muted";
+        meta.textContent = JSON.stringify(a);
+        div.appendChild(meta);
+        const sel = document.createElement("select");
+        sel.className = "desktop-step-status";
+        [
+          ["pending", "Pendiente"],
+          ["done", "Hecho"],
+          ["failed", "Falló"],
+        ].forEach(([val, txt]) => {
+          const o = document.createElement("option");
+          o.value = val;
+          o.textContent = txt;
+          sel.appendChild(o);
+        });
+        div.appendChild(sel);
+        stepControls.push({ sel: sel, action: a, index: ix });
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn-ghost btn-tiny";
+        b.textContent = "Ejecutar";
+        b.disabled = !canExec;
+        b.addEventListener("click", async () => {
+          const err = await desktopExecOneAction(a, hitlAck);
+          if (err === "cancelado") dlog("Cancelado.");
+          else if (err) dlog("Error: " + err);
+          else {
+            dlog("OK paso " + (ix + 1));
+            sel.value = "done";
+          }
+        });
+        div.appendChild(b);
+        stepsEl.appendChild(div);
+      });
+      sub.appendChild(stepsEl);
+      const fbRow = document.createElement("div");
+      fbRow.className = "desktop-row";
+      const fbBtn = document.createElement("button");
+      fbBtn.type = "button";
+      fbBtn.className = "btn-ghost btn-tiny";
+      fbBtn.textContent = "Enviar estado de pasos al asistente";
+      fbBtn.addEventListener("click", async () => {
+        const steps = stepControls.map(function (sc) {
+          return {
+            index: sc.index,
+            status: sc.sel.value,
+            label: desktopActionLabel(sc.action),
+            action: sc.action,
+          };
+        });
+        await submitChatCore({
+          message:
+            "Actualizo el estado del plan de escritorio desde el panel (pendiente/hecho/falló por paso).",
+          screenshots: [],
+          interaction: {
+            type: "desktop_plan_feedback",
+            payload: { rationale: plan.rationale || "", steps: steps },
+          },
+        });
+      });
+      fbRow.appendChild(fbBtn);
+      sub.appendChild(fbRow);
+      const runAll = document.createElement("button");
+      runAll.type = "button";
+      runAll.className = "btn-ghost btn-tiny";
+      runAll.textContent = "Ejecutar todo";
+      runAll.disabled = !canExec;
+      const btnRow = document.createElement("div");
+      btnRow.className = "desktop-row";
+      btnRow.appendChild(runAll);
+      sub.appendChild(btnRow);
+      sub.appendChild(logEl);
+      panel.appendChild(sub);
+      msgWrap.appendChild(panel);
+      function sleep(ms) {
+        return new Promise((res) => setTimeout(res, ms));
+      }
+      runAll.addEventListener("click", async () => {
+        if (!canExec) return;
+        if (yoloMain.checked) {
+          if (!confirm("YOLO: ejecutar todos los pasos seguidos. ¿Seguro?")) return;
+        }
+        runAll.disabled = true;
+        for (let i = 0; i < actions.length; i++) {
+          const a = actions[i];
+          const nd = getNativeDesk();
+          if (!yoloMain.checked) {
+            if (!confirm("Paso " + (i + 1) + ": " + desktopActionLabel(a) + " — ¿ejecutar?")) break;
+          } else {
+            const ackNeeded = desktopNeedsHumanAck(a);
+            if (ackNeeded && nd && !hitlYolo.checked) {
+              if (!confirm("Paso sensible " + (i + 1) + ": " + desktopActionLabel(a) + " — ¿ejecutar?")) break;
+            }
+            if (ackNeeded && !nd && window.__HELPDESK_DESKTOP_PY__) {
+              if (!hitlYolo.checked) {
+                dlog("Marca «YOLO sensibles» o ejecuta sin YOLO.");
+                break;
+              }
+              if (!hitlAck || !hitlAck.checked) {
+                dlog("Marca la confirmación human-in-the-loop.");
+                break;
+              }
+            }
+          }
+          const err = await desktopExecOneAction(a, hitlAck);
+          if (err === "cancelado") {
+            dlog("Cancelado en paso " + (i + 1));
+            break;
+          }
+          if (err) {
+            dlog("Error paso " + (i + 1) + ": " + err);
+            break;
+          }
+          dlog("OK paso " + (i + 1));
+          if (stepControls[i]) stepControls[i].sel.value = "done";
+          await sleep(yoloMain.checked ? 1200 : 400);
+        }
+        runAll.disabled = false;
+      });
+    }
+
+    async function submitChatCore({ message, screenshots, interaction }) {
+      const thinking = addThinkingCard();
+      btnSend.disabled = true;
+      try {
+        const payload = {
+          message: message,
+          thread_id: threadId,
+          screenshots: (screenshots || []).map((u) => b64FromDataUrl(u)),
+        };
+        if (interaction) payload.interaction = interaction;
+        const nd = getNativeDesk();
+        if (nd) payload.client_os = nd.clientPlatform;
+        const r = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const j = await r.json();
+        if (!r.ok) {
+          const d = j.detail;
+          const msg =
+            typeof d === "string"
+              ? d
+              : Array.isArray(d)
+                ? d.map((e) => e.msg || JSON.stringify(e)).join("; ")
+                : JSON.stringify(j);
+          throw new Error(msg);
+        }
+        thinking.clear();
+        pendingShots.length = 0;
+        renderShotPreview();
+        const rawReply = j.reply;
+        lastAssistantRawReply = rawReply;
+        if (guidedActive) {
+          const newSteps = extractGuidedSteps(lastAssistantRawReply);
+          if (newSteps.length > 0) {
+            guidedSteps = newSteps;
+            guidedStepIndex = 0;
+          } else if (guidedAdvanceAfterReply && guidedSteps.length) {
+            guidedStepIndex = Math.min(guidedStepIndex + 1, guidedSteps.length - 1);
+          }
+          guidedAdvanceAfterReply = false;
+          syncGuidedBarUi();
+        }
+        const displayMd = window.LiveSheet ? window.LiveSheet.strip(rawReply) : rawReply;
+        const wrap = addMessage("assistant", renderMarkdown(displayMd), { isMarkdown: true });
+        if (window.LiveSheet) window.LiveSheet.afterAssistantReply(rawReply, wrap);
+        if (j.desktop_plan && Array.isArray(j.desktop_plan.actions) && j.desktop_plan.actions.length) {
+          attachDesktopPlanPanel(wrap, j.desktop_plan);
+        }
+        attachSourcesToolsPanel(wrap, j);
+        updateDesktopHint();
+        return j;
+      } catch (err) {
+        guidedAdvanceAfterReply = false;
+        thinking.clear();
+        addMessage("assistant", renderMarkdown("**Error**\n\n```\n" + err.message + "\n```"), { isMarkdown: true });
+        throw err;
+      } finally {
+        btnSend.disabled = false;
+        loadTickets();
+      }
+    }
+
+    async function liveSheetChat(body) {
+      addMessage("user", body.message, { isMarkdown: false });
+      return submitChatCore({
+        message: body.message,
+        screenshots: body.screenshots || [],
+        interaction: body.interaction,
+      });
+    }
+
+    function wireAssistantTaskCheckboxes(bubble) {
+      const md = bubble.querySelector(".md-content");
+      if (!md) return;
+      md.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        if (cb.dataset.hdWired === "1") return;
+        cb.dataset.hdWired = "1";
+        cb.removeAttribute("disabled");
+        cb.disabled = false;
+        cb.style.cursor = "pointer";
+        cb.addEventListener("change", async () => {
+          const li = cb.closest("li");
+          let text = "";
+          if (li) {
+            const clone = li.cloneNode(true);
+            clone.querySelectorAll("input").forEach((i) => i.remove());
+            text = clone.textContent.replace(/\s+/g, " ").trim().slice(0, 500);
+          }
+          const msg =
+            (cb.checked ? "He marcado como hecho: " : "He desmarcado: ") + (text || "(tarea)");
+          try {
+            await liveSheetChat({
+              message: msg,
+              screenshots: [],
+              interaction: { type: "checklist_update", payload: { checked: cb.checked, text: text } },
+            });
+          } catch (_) {
+            cb.checked = !cb.checked;
+          }
+        });
+      });
+    }
+
+    document.getElementById("f").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const ta = document.getElementById("msg");
+      const text = ta.value.trim();
+      if (!text) return;
+      const shots = pendingShots.slice();
+      const userDisplay =
+        text + (shots.length ? "\n\n*[" + shots.length + " captura(s) → análisis por visión]*" : "");
+      ta.value = "";
+      syncMsgTextareaHeight();
+      addMessage("user", userDisplay, { isMarkdown: false });
+      try {
+        await submitChatCore({ message: text, screenshots: shots, interaction: undefined });
+      } catch (_) {}
+    });
+
+    if (window.LiveSheet) {
+      window.LiveSheet.init({
+        getThreadId: function () {
+          return threadId;
+        },
+        chat: liveSheetChat,
+      });
+    }
+
+    loadCapabilities();
+    updateDesktopHint();
+    addMessage(
+      "assistant",
+      renderMarkdown(
+        "## Bienvenido al centro de soporte TI\n\nPuedes describir la incidencia abajo; con un caso concreto el asistente intentará **crear un ticket** y darte el **ID**. Usa los **accesos rápidos** o **Imagen** / **Pantalla** si quieres adjuntar capturas.\n\n- **Guiado:** si la respuesta incluye un plan con pasos, pulsa **Guiado** junto a las herramientas para seguirlo con capturas por paso.\n- **Tickets:** en el panel izquierdo; clic para detalle.\n- **Plan en vivo:** pestaña inferior sobre el área de mensaje (Kanban, sliders).\n- **Tu equipo:** si pides algo como «abre ajustes de batería» o «desactiva el ahorro de energía», el asistente puede preparar un **plan de automatización**; cuando exista, verás debajo de su mensaje los pasos y botones para ejecutarlos (Electron o PyAutoGUI en localhost). Si usas solo el navegador, define `HELPDESK_DESKTOP_PY_EXEC=1` en el entorno del servidor y reinicia.\n- **Fuentes:** tras cada respuesta puedes desplegar *Fuentes y herramientas* para ver documentos KB, enlaces web y qué herramientas usó el agente.\n\n> *Saludos muy genéricos* no abren ticket; en cuanto haya un síntoma concreto, actuamos."
+      ),
+      { isMarkdown: true }
+    );
+    loadTickets();
+  </script>
+</body>
+</html>

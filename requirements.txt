@@ -1,0 +1,18 @@
+# Agente mesa de ayuda TI: LangGraph + RAG + FastAPI
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+jinja2>=3.1.0
+python-dotenv>=1.0.0
+langgraph>=0.2.76
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-community>=0.3.0
+langchain-text-splitters>=0.3.0
+chromadb>=0.5.0
+pypdf>=5.0.0
+pyperclip>=1.9.0
+duckduckgo-search>=6.0.0
+sentence-transformers>=3.0.0
+# Automatización local (opcional): POST /api/desktop/exec con HELPDESK_DESKTOP_PY_EXEC=1
+pyautogui>=0.9.54

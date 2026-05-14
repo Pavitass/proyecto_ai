@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control de escritorio (nativo)</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; }
+    body { margin: 0; padding: 16px; max-width: 720px; }
+    h1 { font-size: 1.1rem; margin: 0 0 8px; }
+    .warn { background: #3d2a00; border: 1px solid #a66; padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 12px; }
+    label { display: block; font-size: 0.8rem; color: #9aa0a6; margin-bottom: 4px; }
+    textarea { width: 100%; min-height: 80px; padding: 10px; border-radius: 8px; border: 1px solid #444; background: #111; color: #eee; box-sizing: border-box; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+    button { padding: 8px 14px; border-radius: 8px; border: 1px solid #555; background: #2d333b; color: #eee; cursor: pointer; }
+    button.primary { background: #238636; border-color: #2ea043; }
+    button.danger { background: #6c2121; border-color: #a04040; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    #log { font-size: 0.78rem; white-space: pre-wrap; background: #0d1117; padding: 10px; border-radius: 8px; margin-top: 12px; max-height: 200px; overflow: auto; border: 1px solid #333; }
+    #plan { margin-top: 12px; }
+    .step { border: 1px solid #444; border-radius: 8px; padding: 8px; margin-bottom: 8px; font-size: 0.82rem; }
+    .muted { color: #9aa0a6; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <h1>Automatización local (ratón / teclado)</h1>
+  <p class="warn">
+    Requiere <strong>python run.py</strong> (motor API) y claves LLM en <code>.env</code>.
+    En macOS: Concede a esta app <strong>Accesibilidad</strong> y <strong>Grabación de pantalla</strong> si el sistema lo pide.
+    En Windows: puede pedir permisos de accesibilidad. Úsalo solo en máquinas de prueba; el modo YOLO ejecuta pasos seguidos sin confirmar cada uno.
+  </p>
+  <label for="goal">Qué quieres hacer (describe la tarea en pantalla)</label>
+  <textarea id="goal" placeholder="Ejemplo: abrir Spotlight y escribir Notas"></textarea>
+  <div class="row">
+    <button type="button" class="primary" id="btnPlan">Solicitar plan al motor</button>
+    <label><input type="checkbox" id="yolo" /> Modo YOLO (sin confirmar cada paso; pausa 1,2 s entre acciones)</label>
+  </div>
+  <p class="muted" id="rationale"></p>
+  <div id="plan"></div>
+  <div class="row">
+    <button type="button" id="btnRunAll" disabled>Ejecutar todo (respeta YOLO / confirmaciones)</button>
+  </div>
+  <div id="log"></div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

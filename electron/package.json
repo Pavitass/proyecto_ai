@@ -1,0 +1,14 @@
+{
+  "name": "helpdesk-desktop-native",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11"
+  }
+}

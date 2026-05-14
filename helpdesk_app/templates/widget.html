@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guía · HelpDesk</title>
+  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/widget.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" crossorigin="anonymous"></script>
+</head>
+<body class="widget-root">
+  <script>
+    if (new URLSearchParams(location.search).get("electron_float") === "1") {
+      document.documentElement.classList.add("electron-float");
+    }
+  </script>
+  <header class="widget-top">
+    <div>
+      <div class="widget-title">Guía del hilo</div>
+      <div class="widget-meta" id="widgetTid"></div>
+    </div>
+    <div class="widget-actions">
+      <a href="/" target="_blank" rel="noopener noreferrer">App completa</a>
+      <button type="button" class="btn-ghost btn-tiny" id="widgetRefresh" title="Actualizar contenido">Actualizar</button>
+    </div>
+  </header>
+  <main id="widgetBody" class="widget-body md-content"></main>
+  <footer class="widget-foot">
+    Si chateas en <strong>otro navegador</strong>, arranca Electron con el comando que copias desde la app (incluye <code>HELPDESK_THREAD_ID</code>) o abre esta URL con <code>?thread=…</code>.
+  </footer>
+  <script>
+    const tidKey = "helpdesk_thread_id";
+    function uuid() {
+      return crypto.randomUUID();
+    }
+    let threadId = localStorage.getItem(tidKey);
+    const params = new URLSearchParams(location.search);
+    const qThread = params.get("thread");
+    if (qThread && qThread.trim().length >= 8) {
+      threadId = qThread.trim();
+      localStorage.setItem(tidKey, threadId);
+    }
+    if (!threadId) {
+      threadId = uuid();
+      localStorage.setItem(tidKey, threadId);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function normalizeMarkdownTasks(md) {
+      if (!md) return "";
+      let s = String(md);
+      s = s.replace(/^(\s*)[\*]\s+\[\s*\]\s+/gm, "$1- [ ] ");
+      s = s.replace(/^(\s*)[\*]\s+\[x\]\s+/gim, "$1- [x] ");
+      return s;
+    }
+
+    function renderMarkdown(md) {
+      if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+        return `<div class="plain">${escapeHtml(md)}</div>`;
+      }
+      try {
+        marked.setOptions({ gfm: true, breaks: true });
+        const raw = marked.parse(normalizeMarkdownTasks(md));
+        return DOMPurify.sanitize(raw, {
+          ADD_TAGS: ["details", "summary", "input"],
+          ADD_ATTR: ["target", "rel", "type", "checked", "disabled", "class", "id", "name"],
+        });
+      } catch {
+        return `<div class="plain">${escapeHtml(md)}</div>`;
+      }
+    }
+
+    function postProcessMd(root) {
+      root.querySelectorAll('a[href^="http"]').forEach((a) => {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      });
+    }
+
+    function enhanceInteractiveSteps(container) {
+      const scope =
+        container.classList && container.classList.contains("md-content")
+          ? container
+          : container.querySelector(".md-content") || container;
+      scope.querySelectorAll("ol").forEach((ol) => {
+        if (ol.children.length >= 2) ol.classList.add("interactive-steps");
+      });
+      postProcessMd(scope);
+    }
+
+    const bodyEl = document.getElementById("widgetBody");
+    const tidEl = document.getElementById("widgetTid");
+
+    function showTid() {
+      tidEl.textContent = "Sesión " + threadId.slice(0, 8) + "…";
+    }
+    showTid();
+
+    window.addEventListener("storage", (e) => {
+      if (e.key === tidKey && e.newValue) {
+        threadId = e.newValue;
+        showTid();
+        refresh();
+      }
+    });
+
+    function wireWidgetCheckboxes() {
+      bodyEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        if (cb.dataset.hdW === "1") return;
+        cb.dataset.hdW = "1";
+        cb.removeAttribute("disabled");
+        cb.disabled = false;
+        cb.style.cursor = "pointer";
+        cb.addEventListener("change", async () => {
+          const li = cb.closest("li");
+          let text = "";
+          if (li) {
+            const clone = li.cloneNode(true);
+            clone.querySelectorAll("input").forEach((i) => i.remove());
+            text = clone.textContent.replace(/\s+/g, " ").trim().slice(0, 500);
+          }
+          const msg =
+            (cb.checked ? "He marcado como hecho: " : "He desmarcado: ") + (text || "(tarea)");
+          try {
+            const r = await fetch("/api/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: msg,
+                thread_id: threadId,
+                screenshots: [],
+                interaction: { type: "checklist_update", payload: { checked: cb.checked, text: text } },
+              }),
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : JSON.stringify(j));
+            await refresh();
+          } catch (_) {
+            cb.checked = !cb.checked;
+          }
+        });
+      });
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch("/api/thread/" + encodeURIComponent(threadId));
+        const j = await r.json();
+        bodyEl.innerHTML = renderMarkdown(
+          j.last_assistant_text || "_Aún no hay respuesta del asistente en este hilo. Abre la **app completa** y envía un mensaje._"
+        );
+        enhanceInteractiveSteps(bodyEl);
+        wireWidgetCheckboxes();
+      } catch (_) {
+        bodyEl.innerHTML = "<p class=\"plain muted\">No se pudo cargar la guía.</p>";
+      }
+    }
+
+    document.getElementById("widgetRefresh").addEventListener("click", refresh);
+    refresh();
+    setInterval(refresh, 3500);
+  </script>
+</body>
+</html>

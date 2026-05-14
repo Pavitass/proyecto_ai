@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.chroma/
+node_modules/
+data/automation_log.jsonl
+.DS_Store
+.env

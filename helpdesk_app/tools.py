@@ -1,0 +1,252 @@
+import json
+from datetime import datetime, timezone
+
+from langchain_core.tools import tool
+
+from helpdesk_app import chat_trace
+from helpdesk_app import db
+from helpdesk_app.chat_context import chat_client_os
+from helpdesk_app.config import DATA_KB_DIR
+from helpdesk_app.desktop_plan import DesktopPlanError, generate_desktop_plan
+from helpdesk_app.rag import buscar_contexto
+from helpdesk_app.web_search import buscar_web_ddgs
+
+
+@tool
+def buscar_casos_resueltos_previos(consulta: str) -> str:
+    """Busca en tickets ya **resueltos** (base interna) casos parecidos a la consulta.
+    Úsalo después de buscar_en_base_de_conocimiento cuando haya una incidencia concreta,
+    para reutilizar lecciones reales de cierres anteriores (síntomas, categoría, resolución guardada)."""
+    casos = db.buscar_casos_resueltos(consulta, limite=6)
+    if not casos:
+        return (
+            "No hay tickets resueltos indexados aún, o ninguno coincide de forma útil. "
+            "Sigue con la KB y el ticket actual; cuando el caso cierre, registra lección con registrar_ticket_resuelto."
+        )
+    bloques: list[str] = []
+    for i, c in enumerate(casos, 1):
+        rid = c.get("id", "")
+        lec = (c.get("resolucion_final") or "").strip()
+        lec_txt = f"\n**Lección registrada:** {lec}" if lec else ""
+        bloques.append(
+            f"--- Caso resuelto {i} (id `{rid}`) — {c.get('categoria', '')} — {c.get('prioridad', '')} ---\n"
+            f"**Título:** {c.get('titulo', '')}\n"
+            f"**Descripción original:** {c.get('descripcion_usuario', '')[:900]}"
+            f"{'…' if len(str(c.get('descripcion_usuario', ''))) > 900 else ''}"
+            f"{lec_txt}"
+        )
+    return "\n\n".join(bloques)
+
+
+@tool
+def registrar_ticket_resuelto(ticket_id: str, leccion_resumida: str) -> str:
+    """Cuando el usuario confirma que el problema quedó resuelto o el caso está cerrado con éxito.
+    Guarda una **lección breve** (qué fallaba, qué se hizo, qué verificar la próxima vez), **sin** correos,
+    nombres de personas, teléfonos ni contraseñas. Mínimo unas pocas frases. Los futuros casos podrán
+    reutilizar esta lección vía buscar_casos_resueltos_previos."""
+    ok = db.registrar_ticket_resuelto(ticket_id.strip(), leccion_resumida.strip())
+    if not ok:
+        return (
+            "No se pudo registrar: comprueba el **ticket_id** completo y que la lección tenga "
+            "suficiente texto (varias frases, contenido real). Si el ticket no existe, créalo antes."
+        )
+    return (
+        f"Ticket {ticket_id.strip()} marcado como **resuelto** y lección guardada. "
+        "Los casos futuros similares podrán encontrar este cierre con buscar_casos_resueltos_previos."
+    )
+
+
+@tool
+def buscar_en_base_de_conocimiento(consulta: str) -> str:
+    """Busca en la base de conocimiento (RAG). Úsalo en cuanto haya un caso concreto; suele ser el primer paso
+    antes de registrar o actualizar el ticket."""
+    docs = buscar_contexto(consulta, k=5)
+    if not docs:
+        return "No se encontraron fragmentos relevantes en la base de conocimiento."
+    bloques: list[str] = []
+    for i, d in enumerate(docs, 1):
+        src = d.metadata.get("source", "")
+        preview = (d.page_content or "").strip().replace("\n", " ")[:240]
+        chat_trace.add_kb_source(str(src), preview)
+        bloques.append(f"--- Fragmento {i} ({src}) ---\n{d.page_content.strip()}")
+    return "\n\n".join(bloques)
+
+
+@tool
+def buscar_en_web(consulta: str) -> str:
+    """Busca en Internet (DuckDuckGo) cuando la KB interna no cubre el caso, hace falta información reciente
+    o el usuario pide explícitamente fuentes externas. Resume resultados citando **título y URL** en tu respuesta.
+    Formula la **consulta** de forma concreta: preferible **español** + producto/contexto (p. ej. «modo bajo consumo Mac Apple»).
+    Evita consultas muy cortas en inglés del tipo solo «how to turn off …» (suelen devolver diccionarios por la palabra *turn*).
+    Si la información es útil para futuros tickets, pregunta al usuario si desea **guardar un resumen en la KB**;
+    solo si confirma, usa guardar_snippet_en_kb."""
+    texto, hits = buscar_web_ddgs(consulta, max_results=5)
+    for h in hits:
+        chat_trace.add_web_source(h.get("title") or "", h.get("href") or "", h.get("body") or "")
+    return texto
+
+
+_KB_IMPORT_FILE = "99_importaciones_usuario.md"
+
+
+@tool
+def guardar_snippet_en_kb(
+    titulo: str,
+    resumen_markdown: str,
+    fuente_url: str = "",
+) -> str:
+    """Solo tras **confirmación explícita del usuario** de añadir contenido a la KB interna (p. ej. “sí,
+    guárdalo”, “añádelo a la base de conocimiento”). Escribe un bloque en `data/kb/99_importaciones_usuario.md`.
+    Sin datos personales, contraseñas ni secretos. Texto conciso (guía TI)."""
+    title = (titulo or "").strip()
+    body = (resumen_markdown or "").strip()
+    if len(title) < 4 or len(body) < 40:
+        return "Título o resumen demasiado cortos; pide al usuario un poco más de detalle antes de guardar."
+    if len(body) > 12000:
+        return "Resumen demasiado largo; acorta a lo esencial (máx. ~12000 caracteres)."
+    url = (fuente_url or "").strip()[:500]
+    path = DATA_KB_DIR / _KB_IMPORT_FILE
+    DATA_KB_DIR.mkdir(parents=True, exist_ok=True)
+    when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    block = (
+        f"\n\n## {title}\n\n"
+        f"_Importado: {when}_"
+        + (f" · _Fuente:_ {url}\n\n" if url else "\n\n")
+        + body
+        + "\n"
+    )
+    try:
+        prev = path.read_text(encoding="utf-8") if path.exists() else ""
+        if not prev.strip():
+            path.write_text(
+                "# Importaciones a la KB (usuario / asistente)\n\n"
+                "> Revisar antes de producción; convierte a ficheros temáticos si crece.\n"
+                + block,
+                encoding="utf-8",
+            )
+        else:
+            path.write_text(prev.rstrip() + block, encoding="utf-8")
+    except OSError as e:
+        return f"No se pudo escribir en la KB: {e}"
+    return (
+        f"Fragmento añadido a `{_KB_IMPORT_FILE}`. "
+        "Recuerda al usuario que debe **reindexar** el RAG (borrar la carpeta `.chroma` del proyecto o "
+        "`HELPDESK_CHROMA_DIR`) y reiniciar el servidor para que los embeddings incluyan el nuevo texto."
+    )
+
+
+@tool
+def crear_ticket_de_servicio(
+    titulo: str,
+    categoria: str,
+    prioridad: str,
+    descripcion_usuario: str,
+    pasos_sugeridos: str,
+    fuentes_documentos: str,
+    estado_ticket: str = "en_diagnostico",
+) -> str:
+    """Registra un ticket en cuanto haya un caso concreto (comportamiento proactivo).
+    estado_ticket: en_diagnostico (apertura inmediata), pendiente_validacion, abierto, etc.
+    fuentes_documentos: nombres de archivos KB separados por coma, o 'ninguna'."""
+    fuentes = [x.strip() for x in fuentes_documentos.split(",") if x.strip()]
+    est = (estado_ticket or "en_diagnostico").strip() or "en_diagnostico"
+    tid = db.crear_ticket(
+        titulo=titulo,
+        categoria=categoria,
+        prioridad=prioridad,
+        descripcion_usuario=descripcion_usuario,
+        pasos_sugeridos=pasos_sugeridos,
+        fuentes_kb=fuentes,
+        estado=est,
+    )
+    return (
+        f"Ticket creado. ID: {tid}. "
+        "Comunícalo al usuario al inicio de tu respuesta; si afinas el plan, usa actualizar_ticket_de_servicio."
+    )
+
+
+@tool
+def actualizar_ticket_de_servicio(
+    ticket_id: str,
+    pasos_sugeridos: str = "",
+    titulo: str = "",
+    prioridad: str = "",
+    categoria: str = "",
+    fuentes_documentos: str = "",
+    estado_ticket: str = "",
+) -> str:
+    """Actualiza un ticket ya existente tras más KB o diagnóstico. Deja en blanco los campos que no cambien."""
+    kw: dict = {}
+    if pasos_sugeridos.strip():
+        kw["pasos_sugeridos"] = pasos_sugeridos.strip()
+    if titulo.strip():
+        kw["titulo"] = titulo.strip()
+    if prioridad.strip():
+        kw["prioridad"] = prioridad.strip()
+    if categoria.strip():
+        kw["categoria"] = categoria.strip()
+    if estado_ticket.strip():
+        kw["estado"] = estado_ticket.strip()
+    if fuentes_documentos.strip():
+        kw["fuentes_kb"] = [x.strip() for x in fuentes_documentos.split(",") if x.strip()]
+    if not kw:
+        return (
+            "No se indicó ningún cambio. Indica al menos uno: pasos_sugeridos, titulo, prioridad, "
+            "categoria, estado_ticket o fuentes_documentos."
+        )
+    ok = db.actualizar_ticket(ticket_id.strip(), **kw)
+    if not ok:
+        return "Ticket no encontrado; verifica el ID."
+    return f"Ticket {ticket_id} actualizado."
+
+
+@tool
+def escalar_a_especialista(ticket_id: str, motivo: str) -> str:
+    """Marca un ticket para intervención humana cuando falten permisos, datos sensibles o la KB no cubre el caso."""
+    ok = db.actualizar_estado_ticket(
+        ticket_id.strip(),
+        "escalado",
+        motivo_escalacion=motivo.strip(),
+    )
+    if not ok:
+        return (
+            "No se encontró el ticket indicado. Crea antes un ticket con crear_ticket_de_servicio "
+            "o verifica el ID."
+        )
+    return f"Ticket {ticket_id} marcado como escalado. Motivo registrado para el equipo humano."
+
+
+@tool
+def preparar_plan_escritorio(goal: str) -> str:
+    """Genera un plan JSON para **automatizar el escritorio** (mover ratón, clic, teclado, atajos tipo Spotlight).
+    Úsalo cuando el usuario pida hacer algo **en su propio equipo** (abrir ajustes, desactivar ahorro de batería
+    si es posible sin contraseña de admin, buscar en el sistema, etc.). No lo uses para preguntas solo
+    informativas, ni para borrar datos o operaciones irreversibles sin que el usuario lo pida con claridad.
+    El parámetro goal debe ser una frase corta y concreta en español.
+    Tras llamarla, resume al usuario el plan en lenguaje natural; la interfaz puede mostrar botones de ejecución."""
+    g = (goal or "").strip()
+    if len(g) < 4:
+        return json.dumps(
+            {"error": "Objetivo demasiado corto.", "rationale": "", "actions": []},
+            ensure_ascii=False,
+        )
+    co = (chat_client_os.get() or "").strip() or None
+    try:
+        plan = generate_desktop_plan(g, None, client_os=co)
+        return json.dumps(plan, ensure_ascii=False)
+    except DesktopPlanError as e:
+        return json.dumps({"error": str(e), "rationale": "", "actions": []}, ensure_ascii=False)
+
+
+def all_tools():
+    return [
+        buscar_en_base_de_conocimiento,
+        buscar_en_web,
+        buscar_casos_resueltos_previos,
+        crear_ticket_de_servicio,
+        actualizar_ticket_de_servicio,
+        registrar_ticket_resuelto,
+        escalar_a_especialista,
+        preparar_plan_escritorio,
+        guardar_snippet_en_kb,
+    ]

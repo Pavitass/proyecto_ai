@@ -1,0 +1,7 @@
+{
+  "name": "helpdesk-agent",
+  "private": true,
+  "scripts": {
+    "float": "npm start --prefix ./electron"
+  }
+}
