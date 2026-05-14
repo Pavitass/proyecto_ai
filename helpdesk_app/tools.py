@@ -57,10 +57,12 @@ def registrar_ticket_resuelto(ticket_id: str, leccion_resumida: str) -> str:
 
 
 @tool
-def buscar_en_base_de_conocimiento(consulta: str) -> str:
-    """Busca en la base de conocimiento (RAG). Úsalo en cuanto haya un caso concreto; suele ser el primer paso
-    antes de registrar o actualizar el ticket."""
-    docs = buscar_contexto(consulta, k=5)
+def buscar_en_base_de_conocimiento(consulta: str, top_k: int = 4, diversidad: bool = False) -> str:
+    """Busca en la KB (RAG). Úsalo en cuanto haya un caso concreto. Parámetros:
+    - top_k: número de fragmentos (1-8 razonable, por defecto 4).
+    - diversidad: si True usa MMR (resultados más diversos)."""
+    k = max(1, min(int(top_k), 10))
+    docs = buscar_contexto(consulta, k=k, mmr=bool(diversidad))
     if not docs:
         return "No se encontraron fragmentos relevantes en la base de conocimiento."
     bloques: list[str] = []
@@ -238,6 +240,31 @@ def preparar_plan_escritorio(goal: str) -> str:
         return json.dumps({"error": str(e), "rationale": "", "actions": []}, ensure_ascii=False)
 
 
+@tool
+def ejecutar_tarea_escritorio(goal: str) -> str:
+    """Ejecuta un objetivo paso a paso en el escritorio mirando capturas de pantalla.
+    Loop: captura → razona → UNA acción → verifica → repite (máx 20 pasos, 90s totales).
+    Pide aprobación humana en cada paso marcado sensible. Úsalo SOLO si el usuario
+    pidió explícitamente que el sistema haga algo en su equipo (p. ej. "envíalo en mi Outlook",
+    "abre Ajustes y cambia X"). Devuelve resumen del resultado, no inventes pasos."""
+    from helpdesk_app.vision_loop import events as ev
+    from helpdesk_app.vision_loop.loop import run_loop
+
+    g = (goal or "").strip()
+    if len(g) < 4:
+        return json.dumps({"status": "fail", "reason": "Objetivo demasiado corto."}, ensure_ascii=False)
+
+    state = ev.create_run(g)
+    chat_trace.add_kb_source("[automation]", f"run_id={state.run_id} goal={g[:120]}")
+    outcome = run_loop(state)
+    return json.dumps({
+        "run_id": state.run_id,
+        "status": outcome.status,
+        "reason": outcome.reason,
+        "steps": outcome.steps,
+    }, ensure_ascii=False)
+
+
 def all_tools():
     return [
         buscar_en_base_de_conocimiento,
@@ -249,4 +276,5 @@ def all_tools():
         escalar_a_especialista,
         preparar_plan_escritorio,
         guardar_snippet_en_kb,
+        ejecutar_tarea_escritorio,
     ]
