@@ -363,13 +363,17 @@ def chat(body: ChatIn):
             + full_message
         )
 
+    # inject step status snapshot for the LLM
+    _steps_block = _step_state.render_status_block(body.thread_id)
+    _user_text_with_state = (_steps_block + "\n\n" + full_message) if _steps_block else full_message
+
     trace_tok = chat_trace.trace_begin()
     tkn = chat_ctx.chat_client_os.set((body.client_os or "").strip()[:32] or None)
     snap: dict = {"kb_sources": [], "web_sources": []}
     result = None
     try:
         result = graph.invoke(
-            {"messages": [HumanMessage(content=full_message)]},
+            {"messages": [HumanMessage(content=_user_text_with_state)]},
             config={
                 "configurable": {"thread_id": body.thread_id},
                 "recursion_limit": 48,
@@ -553,3 +557,44 @@ def loop_confirm(body: _ConfirmBody):
 def loop_runs():
     vl_events.cleanup_old_runs()
     return {"active": []}
+
+
+from helpdesk_app import step_state as _step_state
+
+
+class _StepRegisterBody(BaseModel):
+    thread_id: str = Field(..., min_length=4, max_length=128)
+    message_id: str = Field(..., min_length=4, max_length=128)
+    steps: list[dict] = Field(..., max_length=40)
+
+
+class _StepUpdateBody(BaseModel):
+    thread_id: str = Field(..., min_length=4, max_length=128)
+    message_id: str = Field(..., min_length=4, max_length=128)
+    index: int = Field(..., ge=0, le=200)
+    status: str
+    note: str = Field(default="", max_length=500)
+
+
+@app.post("/api/steps/register")
+def steps_register(body: _StepRegisterBody):
+    _step_state.upsert_steps(body.thread_id, body.message_id, body.steps)
+    return {"ok": True}
+
+
+@app.post("/api/steps/update")
+def steps_update(body: _StepUpdateBody):
+    try:
+        ok = _step_state.update_step(body.thread_id, body.message_id, body.index, body.status, body.note)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "thread/message/index no encontrado")
+    return {"ok": True}
+
+
+@app.get("/api/steps/{thread_id}")
+def steps_get(thread_id: str):
+    if len(thread_id) < 4 or len(thread_id) > 128:
+        raise HTTPException(400, "thread_id inválido")
+    return {"thread_id": thread_id, "messages": _step_state.get_steps(thread_id)}
