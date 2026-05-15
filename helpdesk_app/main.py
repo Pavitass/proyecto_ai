@@ -1,5 +1,7 @@
 import json
 import os
+import time as _time
+import uuid as _uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field, field_validator
 
+from helpdesk_app import agent_trace as _agent_trace
 from helpdesk_app import chat_context as chat_ctx
 from helpdesk_app import chat_trace
 from helpdesk_app import db
@@ -86,6 +89,7 @@ class ChatIn(BaseModel):
     screenshots: list[str] = Field(default_factory=list)
     interaction: InteractionBlock | None = None
     client_os: str | None = Field(default=None, max_length=32)
+    turn_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("screenshots", mode="before")
     @classmethod
@@ -118,6 +122,7 @@ class ChatOut(BaseModel):
     sources: list[SourceOut] = Field(default_factory=list)
     tool_calls_used: list[ToolCallOut] = Field(default_factory=list)
     web_search_used: bool = False
+    turn_id: str | None = None
 
 
 class DesktopPlanIn(BaseModel):
@@ -324,105 +329,122 @@ def _sources_from_trace(snap: dict) -> tuple[list[SourceOut], bool]:
 
 @app.post("/api/chat", response_model=ChatOut)
 def chat(body: ChatIn):
+    _turn_id = (body.turn_id or "").strip() or _uuid.uuid4().hex[:12]
+    _agent_trace.begin_turn(body.thread_id, _turn_id)
+    _t0 = _time.time()
+    _agent_trace.emit(_turn_id, "phase", {"phase": "analyzing"})
     try:
-        graph = get_graph()
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-
-    vision_used = bool(body.screenshots)
-    full_message = body.message.strip()
-    if body.screenshots:
-        from helpdesk_app import vision
-
         try:
-            summary = vision.describe_screenshots(body.message, body.screenshots)
+            graph = get_graph()
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e)) from e
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        full_message = (
-            "### Análisis automático de la(s) captura(s) (visión)\n\n"
-            + summary
-            + "\n\n### Mensaje del usuario\n\n"
-            + body.message.strip()
-        )
 
-    if body.interaction:
-        ix_blob = json.dumps(
-            body.interaction.model_dump(), ensure_ascii=False, indent=2
-        )
-        full_message = (
-            "[Panel en vivo — el usuario usó la interfaz interactiva (bottom sheet). "
-            "Interpreta el JSON: si `type` es `step_failed`, desglosa **sub-pasos** bajo el paso indicado "
-            "y actualiza herramientas/ticket si aplica; si es `kanban_update` o `slider_values`, "
-            "incorpora el estado en tu plan y responde de forma breve. "
-            "Si `type` es `desktop_plan_feedback`, el usuario indica por **cada paso** del plan de escritorio "
-            "si quedó **hecho**, **pendiente** o **falló**: prioriza sub-pasos manuales, revisa KB o web, "
-            "regenera `preparar_plan_escritorio` solo si aporta, y actualiza el ticket.]\n"
-            f"```json\n{ix_blob}\n```\n\n"
-            + full_message
-        )
+        vision_used = bool(body.screenshots)
+        full_message = body.message.strip()
+        if body.screenshots:
+            from helpdesk_app import vision
 
-    # inject step status snapshot for the LLM
-    _steps_block = _step_state.render_status_block(body.thread_id)
-    _user_text_with_state = (_steps_block + "\n\n" + full_message) if _steps_block else full_message
+            try:
+                summary = vision.describe_screenshots(body.message, body.screenshots)
+            except RuntimeError as e:
+                raise HTTPException(status_code=503, detail=str(e)) from e
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+            full_message = (
+                "### Análisis automático de la(s) captura(s) (visión)\n\n"
+                + summary
+                + "\n\n### Mensaje del usuario\n\n"
+                + body.message.strip()
+            )
 
-    trace_tok = chat_trace.trace_begin()
-    tkn = chat_ctx.chat_client_os.set((body.client_os or "").strip()[:32] or None)
-    _token_thread = chat_ctx.chat_thread_id.set(body.thread_id)
-    snap: dict = {"kb_sources": [], "web_sources": []}
-    result = None
-    try:
-        result = graph.invoke(
-            {"messages": [HumanMessage(content=_user_text_with_state)]},
-            config={
-                "configurable": {"thread_id": body.thread_id},
-                "recursion_limit": 48,
-            },
+        if body.interaction:
+            ix_blob = json.dumps(
+                body.interaction.model_dump(), ensure_ascii=False, indent=2
+            )
+            full_message = (
+                "[Panel en vivo — el usuario usó la interfaz interactiva (bottom sheet). "
+                "Interpreta el JSON: si `type` es `step_failed`, desglosa **sub-pasos** bajo el paso indicado "
+                "y actualiza herramientas/ticket si aplica; si es `kanban_update` o `slider_values`, "
+                "incorpora el estado en tu plan y responde de forma breve. "
+                "Si `type` es `desktop_plan_feedback`, el usuario indica por **cada paso** del plan de escritorio "
+                "si quedó **hecho**, **pendiente** o **falló**: prioriza sub-pasos manuales, revisa KB o web, "
+                "regenera `preparar_plan_escritorio` solo si aporta, y actualiza el ticket.]\n"
+                f"```json\n{ix_blob}\n```\n\n"
+                + full_message
+            )
+
+        # inject step status snapshot for the LLM
+        _steps_block = _step_state.render_status_block(body.thread_id)
+        _user_text_with_state = (_steps_block + "\n\n" + full_message) if _steps_block else full_message
+
+        trace_tok = chat_trace.trace_begin()
+        tkn = chat_ctx.chat_client_os.set((body.client_os or "").strip()[:32] or None)
+        _token_thread = chat_ctx.chat_thread_id.set(body.thread_id)
+        snap: dict = {"kb_sources": [], "web_sources": []}
+        result = None
+        try:
+            result = graph.invoke(
+                {"messages": [HumanMessage(content=_user_text_with_state)]},
+                config={
+                    "configurable": {"thread_id": body.thread_id},
+                    "recursion_limit": 48,
+                },
+            )
+            snap = chat_trace.snapshot()
+        finally:
+            chat_trace.trace_reset(trace_tok)
+            chat_ctx.chat_client_os.reset(tkn)
+            chat_ctx.chat_thread_id.reset(_token_thread)
+
+        msgs = (result or {}).get("messages") or []
+        reply = ""
+        for m in reversed(msgs):
+            if isinstance(m, AIMessage) and not m.tool_calls:
+                c = m.content
+                if isinstance(c, str):
+                    reply = c
+                elif isinstance(c, list):
+                    parts = []
+                    for block in c:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            parts.append(block.get("text", ""))
+                        elif isinstance(block, str):
+                            parts.append(block)
+                    reply = "\n".join(parts)
+                break
+        if not reply:
+            reply = (
+                "(Sin respuesta textual del modelo; revisa el historial o las llamadas a herramientas.)"
+            )
+        reply = strip_helpdesk_ui_block(reply)
+        desktop_plan = _extract_desktop_plan(msgs)
+        desktop_run = _extract_desktop_run(msgs)
+        sources, web_search_used = _sources_from_trace(snap)
+        tool_calls_used = _extract_tool_trace_last_turn(msgs)
+        if not web_search_used:
+            web_search_used = any(t.name == "buscar_en_web" for t in tool_calls_used)
+
+        _agent_trace.emit(_turn_id, "phase", {"phase": "composing"})
+        _duration_ms = int((_time.time() - _t0) * 1000)
+        _agent_trace.emit(_turn_id, "stats", {
+            "duration_ms": _duration_ms,
+            "tool_calls": len(tool_calls_used or []),
+            "kb_hits": len((snap or {}).get("kb_sources") or []),
+            "web_hits": len((snap or {}).get("web_sources") or []),
+        })
+        return ChatOut(
+            reply=reply,
+            thread_id=body.thread_id,
+            vision_used=vision_used,
+            desktop_plan=desktop_plan,
+            desktop_run=desktop_run,
+            sources=sources,
+            tool_calls_used=tool_calls_used,
+            web_search_used=web_search_used,
+            turn_id=_turn_id,
         )
-        snap = chat_trace.snapshot()
     finally:
-        chat_trace.trace_reset(trace_tok)
-        chat_ctx.chat_client_os.reset(tkn)
-        chat_ctx.chat_thread_id.reset(_token_thread)
-
-    msgs = (result or {}).get("messages") or []
-    reply = ""
-    for m in reversed(msgs):
-        if isinstance(m, AIMessage) and not m.tool_calls:
-            c = m.content
-            if isinstance(c, str):
-                reply = c
-            elif isinstance(c, list):
-                parts = []
-                for block in c:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        parts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        parts.append(block)
-                reply = "\n".join(parts)
-            break
-    if not reply:
-        reply = (
-            "(Sin respuesta textual del modelo; revisa el historial o las llamadas a herramientas.)"
-        )
-    reply = strip_helpdesk_ui_block(reply)
-    desktop_plan = _extract_desktop_plan(msgs)
-    desktop_run = _extract_desktop_run(msgs)
-    sources, web_search_used = _sources_from_trace(snap)
-    tool_calls_used = _extract_tool_trace_last_turn(msgs)
-    if not web_search_used:
-        web_search_used = any(t.name == "buscar_en_web" for t in tool_calls_used)
-    return ChatOut(
-        reply=reply,
-        thread_id=body.thread_id,
-        vision_used=vision_used,
-        desktop_plan=desktop_plan,
-        desktop_run=desktop_run,
-        sources=sources,
-        tool_calls_used=tool_calls_used,
-        web_search_used=web_search_used,
-    )
+        _agent_trace.end_turn(_turn_id)
 
 
 @app.get("/api/tickets")
@@ -602,3 +624,27 @@ def steps_get(thread_id: str):
     if len(thread_id) < 4 or len(thread_id) > 128:
         raise HTTPException(400, "thread_id inválido")
     return {"thread_id": thread_id, "messages": _step_state.get_steps(thread_id)}
+
+
+@app.get("/api/agent/trace/{turn_id}")
+def agent_trace_stream(turn_id: str):
+    run = _agent_trace.get_or_create_run("", turn_id)
+
+    def gen():
+        for ev in list(run.events_history):
+            yield f"event: {ev['type']}\ndata: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        while True:
+            try:
+                msg = run.event_queue.get(timeout=1.0)
+            except Exception:
+                if run.finished and run.event_queue.empty():
+                    yield "event: closed\ndata: {}\n\n"
+                    return
+                yield ": keepalive\n\n"
+                continue
+            yield f"event: {msg['type']}\ndata: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            if msg["type"] == "phase" and msg.get("phase") == "done" and run.event_queue.empty():
+                yield "event: closed\ndata: {}\n\n"
+                return
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
