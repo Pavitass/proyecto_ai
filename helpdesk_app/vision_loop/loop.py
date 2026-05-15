@@ -20,6 +20,7 @@ class LoopOutcome:
     status: str
     reason: str = ""
     steps: int = 0
+    final_screenshot_b64: str = ""    # captura PNG (b64) del estado final, útil para análisis
 
 
 _AUDIT_PATH = Path(BASE_DIR) / "data" / "automation_log.jsonl"
@@ -108,13 +109,13 @@ def run_loop(
 
             if decision.done:
                 ev.emit(state, "done", {"reason": decision.reason or "objetivo cumplido"})
-                return LoopOutcome(status="done", reason=decision.reason, steps=step_n)
+                return LoopOutcome(status="done", reason=decision.reason, steps=step_n, final_screenshot_b64=cap.png_b64)
             if decision.fail:
                 ev.emit(state, "fail", {"reason": decision.reason or "actor:fail"})
-                return LoopOutcome(status="fail", reason=decision.reason, steps=step_n)
+                return LoopOutcome(status="fail", reason=decision.reason, steps=step_n, final_screenshot_b64=cap.png_b64)
             if decision.needs_user:
                 ev.emit(state, "needs_user", {"reason": decision.reason or "se requiere usuario"})
-                return LoopOutcome(status="needs_user", reason=decision.reason, steps=step_n)
+                return LoopOutcome(status="needs_user", reason=decision.reason, steps=step_n, final_screenshot_b64=cap.png_b64)
 
             if decision.action and decision.action.sensitive:
                 approved = confirm_fn(state, {

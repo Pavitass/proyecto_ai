@@ -361,6 +361,37 @@ def ejecutar_tarea_escritorio(goal: str) -> str:
         raise
 
 
+@tool
+def analizar_pantalla(pregunta: str = "Describe lo que ves en la pantalla y qué llama la atención") -> str:
+    """Captura la pantalla del usuario AHORA MISMO y un modelo de visión describe lo que ve.
+    Útil para diagnosticar a partir de lo que el usuario está mirando: qué ventana está abierta,
+    qué error muestra, qué proceso consume más recursos en el Administrador de tareas, etc.
+    El parámetro `pregunta` orienta el análisis (p. ej. "¿qué proceso usa más CPU?",
+    "¿qué error aparece?", "¿está el Wi-Fi conectado?"). No mueve el ratón ni teclas; solo lee.
+    Requiere HELPDESK_DESKTOP_PY_EXEC=1 y permisos de grabación de pantalla en macOS."""
+    _emit("tool_start", {"name": "analizar_pantalla", "args_preview": str(pregunta)[:80]})
+    try:
+        from helpdesk_app.config import desktop_py_exec_enabled
+        from helpdesk_app.vision_loop.screen import capture
+        from helpdesk_app import vision
+
+        if not desktop_py_exec_enabled():
+            _emit("tool_end", {"name": "analizar_pantalla", "ok": False, "summary": "gate_disabled"})
+            return "No puedo capturar la pantalla porque HELPDESK_DESKTOP_PY_EXEC no está activo."
+
+        cap = capture()
+        if not cap.png_b64:
+            _emit("tool_end", {"name": "analizar_pantalla", "ok": False, "summary": "captura vacía"})
+            return "La captura salió vacía — falta permiso de Grabación de pantalla en macOS o equivalente."
+
+        descripcion = vision.describe_screenshots(pregunta, [cap.png_b64])
+        _emit("tool_end", {"name": "analizar_pantalla", "ok": True, "summary": f"descripción {len(descripcion)} chars"})
+        return descripcion
+    except Exception as e:
+        _emit("tool_end", {"name": "analizar_pantalla", "ok": False, "summary": str(e)[:120]})
+        return f"No pude analizar la pantalla: {e}"
+
+
 def all_tools():
     return [
         buscar_en_base_de_conocimiento,
@@ -373,4 +404,5 @@ def all_tools():
         preparar_plan_escritorio,
         guardar_snippet_en_kb,
         ejecutar_tarea_escritorio,
+        analizar_pantalla,
     ]
