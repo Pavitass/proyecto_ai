@@ -369,6 +369,7 @@ def chat(body: ChatIn):
 
     trace_tok = chat_trace.trace_begin()
     tkn = chat_ctx.chat_client_os.set((body.client_os or "").strip()[:32] or None)
+    _token_thread = chat_ctx.chat_thread_id.set(body.thread_id)
     snap: dict = {"kb_sources": [], "web_sources": []}
     result = None
     try:
@@ -383,6 +384,7 @@ def chat(body: ChatIn):
     finally:
         chat_trace.trace_reset(trace_tok)
         chat_ctx.chat_client_os.reset(tkn)
+        chat_ctx.chat_thread_id.reset(_token_thread)
 
     msgs = (result or {}).get("messages") or []
     reply = ""

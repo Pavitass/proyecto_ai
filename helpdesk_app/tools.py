@@ -5,7 +5,7 @@ from langchain_core.tools import tool
 
 from helpdesk_app import chat_trace
 from helpdesk_app import db
-from helpdesk_app.chat_context import chat_client_os
+from helpdesk_app import chat_context as chat_ctx
 from helpdesk_app.config import DATA_KB_DIR
 from helpdesk_app.desktop_plan import DesktopPlanError, generate_desktop_plan
 from helpdesk_app.rag import buscar_contexto
@@ -152,6 +152,7 @@ def crear_ticket_de_servicio(
     fuentes_documentos: nombres de archivos KB separados por coma, o 'ninguna'."""
     fuentes = [x.strip() for x in fuentes_documentos.split(",") if x.strip()]
     est = (estado_ticket or "en_diagnostico").strip() or "en_diagnostico"
+    _tid_ctx = (chat_ctx.chat_thread_id.get() or "").strip() or None
     tid = db.crear_ticket(
         titulo=titulo,
         categoria=categoria,
@@ -160,6 +161,7 @@ def crear_ticket_de_servicio(
         pasos_sugeridos=pasos_sugeridos,
         fuentes_kb=fuentes,
         estado=est,
+        thread_id=_tid_ctx,
     )
     return (
         f"Ticket creado. ID: {tid}. "
@@ -232,7 +234,7 @@ def preparar_plan_escritorio(goal: str) -> str:
             {"error": "Objetivo demasiado corto.", "rationale": "", "actions": []},
             ensure_ascii=False,
         )
-    co = (chat_client_os.get() or "").strip() or None
+    co = (chat_ctx.chat_client_os.get() or "").strip() or None
     try:
         plan = generate_desktop_plan(g, None, client_os=co)
         return json.dumps(plan, ensure_ascii=False)
