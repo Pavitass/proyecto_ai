@@ -38,6 +38,7 @@ def _to_png_b64(img: Image.Image, max_side: int | None = None) -> str:
 def capture() -> Capture:
     img = _capture_pil()
     w, h = img.size
-    full = _to_png_b64(img, max_side=1280)
+    # 1024px es buen balance: suficiente para que Gemini lea texto de UI, ~40-60% menos bytes que 1280px.
+    full = _to_png_b64(img, max_side=1024)
     thumb = _to_png_b64(img, max_side=320)
     return Capture(png_b64=full, thumb_b64=thumb, width=w, height=h)
