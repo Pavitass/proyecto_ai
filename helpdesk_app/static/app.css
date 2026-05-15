@@ -1539,3 +1539,24 @@ body {
 .tk-modal-card .tk-actions { display: flex; gap: 8px; }
 .tk-modal-card .btn-primary { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
 .tk-modal-card .btn-primary:hover { filter: brightness(1.1); }
+
+/* Live agent trace ----- */
+.thinking-card { position: relative; }
+.thinking-card .thinking-head { display: flex; align-items: center; gap: 8px; }
+.thinking-card .trace-stats { font-size: 0.72rem; margin-left: auto; }
+.thinking-card .trace-toggle { background: transparent; border: 0; cursor: pointer; color: var(--muted); font-size: 14px; padding: 0 4px; }
+.thinking-card .trace-timeline { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; }
+.thinking-card.trace-collapsed .trace-timeline { display: none; }
+.thinking-card.trace-collapsed .spinner { display: none; }
+.thinking-card[data-phase="done"] .spinner { display: none; }
+.trace-item { font-size: 0.78rem; padding: 4px 8px; background: var(--elev); border-radius: 6px; border: 1px solid var(--border); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.trace-item .trace-icon { font-size: 0.85rem; }
+.trace-item code { font-family: var(--mono, monospace); font-size: 0.72rem; }
+.trace-item.trace-tool_start { border-left: 3px solid var(--accent); }
+.trace-item.trace-tool_start.trace-completed { border-left-color: #2ecc71; opacity: 0.9; }
+.trace-item.trace-tool_start.trace-failed { border-left-color: #c0392b; }
+.trace-item.trace-kb_hit { padding-left: 22px; border-left: 3px solid #b8c2d4; }
+.trace-item.trace-web_hit { padding-left: 22px; border-left: 3px solid #b8c2d4; }
+.trace-item.trace-ticket_op { border-left: 3px solid #8a5a00; }
+.thinking-card .spinner { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: hd-spin 0.8s linear infinite; }
+@keyframes hd-spin { to { transform: rotate(360deg); } }

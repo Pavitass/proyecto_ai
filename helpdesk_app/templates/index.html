@@ -392,38 +392,41 @@
       wrap.className = "msg-wrap assistant";
       wrap.innerHTML = `
         <div class="msg-meta"><span class="dot"></span><span>Asistente TI</span><span>${formatTime()}</span></div>
-        <div class="thinking-card" id="thinkingCard">
+        <div class="thinking-card" id="thinkingCard" data-phase="started">
           <div class="thinking-head">
-            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-            <span id="thinkingLabel">Orquestando agente…</span>
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="phase-label">Iniciando…</span>
+            <span class="trace-stats muted"></span>
+            <button type="button" class="trace-toggle" aria-label="Mostrar / ocultar actividad">▾</button>
           </div>
-          <div class="flow-steps">
-            <div class="fs active" data-step="0">Analizar tu mensaje</div>
-            <div class="fs" data-step="1">Herramientas (KB / tickets)</div>
-            <div class="fs" data-step="2">Respuesta estructurada</div>
-          </div>
-        </div>`;
+          <ol class="trace-timeline"></ol>
+        </div>
+      `;
       log.appendChild(wrap);
       log.scrollTop = log.scrollHeight;
-      const label = wrap.querySelector("#thinkingLabel");
-      const steps = wrap.querySelectorAll(".fs");
-      const msgs = ["Orquestando agente…", "Consultando herramientas y KB…", "Generando pasos y resumen…"];
-      let i = 0;
-      let stepIdx = 0;
-      const t1 = setInterval(() => {
-        i = (i + 1) % msgs.length;
-        if (label) label.textContent = msgs[i];
-      }, 2200);
-      const t2 = setInterval(() => {
-        if (stepIdx < 3) {
-          steps.forEach((s, j) => {
-            s.classList.toggle("active", j === stepIdx);
-            s.classList.toggle("done", j < stepIdx);
-          });
-          stepIdx++;
-        }
-      }, 1400);
-      return { wrap, clear: () => { clearInterval(t1); clearInterval(t2); wrap.remove(); } };
+      const card = wrap.querySelector(".thinking-card");
+      const toggle = card.querySelector(".trace-toggle");
+      if (toggle) {
+        toggle.addEventListener("click", () => {
+          card.classList.toggle("trace-collapsed");
+        });
+      }
+      let _es = null;
+      return {
+        wrap,
+        clear() {
+          try { if (_es) _es.close(); } catch (_) {}
+          try { wrap.remove(); } catch (_) {}
+        },
+        attachTrace(turnId) {
+          if (typeof window.helpdeskAttachTrace === "function") {
+            const demoMode = localStorage.getItem("hd_demo_trace") === "1";
+            _es = window.helpdeskAttachTrace(turnId, card, { keepOpen: demoMode });
+            return _es;
+          }
+          return null;
+        },
+      };
     }
 
     let currentModalTicketId = null;
@@ -1172,12 +1175,15 @@
     }
 
     async function submitChatCore({ message, screenshots, interaction }) {
+      const turnId = (crypto.randomUUID ? crypto.randomUUID().slice(0, 12) : (Date.now().toString(16) + Math.random().toString(16).slice(2, 6)));
       const thinking = addThinkingCard();
+      try { thinking.attachTrace(turnId); } catch (_) {}
       btnSend.disabled = true;
       try {
         const payload = {
           message: message,
           thread_id: threadId,
+          turn_id: turnId,
           screenshots: (screenshots || []).map((u) => b64FromDataUrl(u)),
         };
         if (interaction) payload.interaction = interaction;
@@ -1354,6 +1360,7 @@
   </div>
 
   <script src="/static/step_cards.js" defer></script>
+  <script src="/static/agent_trace.js" defer></script>
   <script src="/static/widgets.js" defer></script>
   <script src="/static/automation_panel.js" defer></script>
 </body>
