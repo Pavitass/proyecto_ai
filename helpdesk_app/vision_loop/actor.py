@@ -53,7 +53,8 @@ def _make_vision_model():
         model=VISION_MODEL,
         google_api_key=GOOGLE_API_KEY,
         temperature=0.1,
-        max_output_tokens=400,
+        max_output_tokens=1024,
+        model_kwargs={"response_mime_type": "application/json"},
     )
 
 
