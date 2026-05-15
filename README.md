@@ -87,7 +87,7 @@ flowchart TD
 Stack y arquitectura completos en la sección **[Arquitectura](#arquitectura)** más abajo. Lo más relevante:
 
 - **Datos:** 12 documentos Markdown en `data/kb/` cubriendo políticas, VPN, correo, Wi-Fi, impresoras, Windows, macOS, Teams/Zoom, seguridad, OneDrive — ~25 mil palabras. Splitter recursivo con chunks de 1400 chars y overlap 180. Embeddings 384-dim (MiniLM).
-- **LLM principal (chat):** Gemini 2.0 Flash o DeepSeek (configurable). Temperatura 0.15. Tool-calling nativo de LangGraph (`bind_tools`).
+- **LLM principal (chat):** DeepSeek Chat (por defecto). Temperatura 0.15. Tool-calling nativo de LangGraph (`bind_tools`). Alternativa configurable a Gemini con `HELPDESK_LLM=google`.
 - **LLM de visión:** Gemini 2.5 Flash. Recibe `goal + history corto + imagen actual`, devuelve JSON estricto con UNA acción (`move/click/type/hotkey/wait`) + flags `done/fail/needs_user`.
 - **Persistencia:** SQLite (tickets, con migración a `thread_id` columna). Estado de pasos y trace en memoria por proceso.
 - **Captura de pantalla:** `mss` (cross-platform, sub-100ms) + Pillow para escalar a 1280px y thumbnail 320px.
@@ -111,7 +111,7 @@ Stack y arquitectura completos en la sección **[Arquitectura](#arquitectura)** 
 |---|---|---|
 | Documentos indexados | 12 md + 1 pdf | ~25k palabras totales |
 | Fragmentos en Chroma | ~110 | chunk 1400, overlap 180 |
-| Latencia turno LLM completo | 2-6 s | Gemini 2.0 Flash, KB + ticket |
+| Latencia turno LLM completo | 2-6 s | DeepSeek Chat, KB + ticket |
 | Latencia paso loop visual | 2-4 s | captura + Gemini 2.5 Flash + PyAutoGUI |
 | Tests automatizados | 30/30 ✓ | `pytest`, deterministas, sin red |
 | Cobertura tools del agente | 10 | KB, web, casos resueltos, 4×tickets, 2×automatización, snippet-kb |
@@ -287,7 +287,8 @@ helpdesk_agent/
 - **Python 3.11+** (recomendado 3.13).
 - **Node.js 18+** (solo si quieres usar Electron).
 - **macOS** (testado) o Windows / Linux (con limitaciones en automatización).
-- Una **clave API de Google Gemini** (gratuita en [ai.google.dev](https://ai.google.dev)) — *opcional una de DeepSeek si prefieres ese LLM para chat*.
+- Una **clave API de DeepSeek** (en [platform.deepseek.com](https://platform.deepseek.com)) para el chat — modelo por defecto.
+- Una **clave API de Google Gemini** (gratuita en [ai.google.dev](https://ai.google.dev)) para el loop visual y opcionalmente embeddings.
 
 ### 1) Clonar y crear entorno virtual
 
@@ -311,12 +312,14 @@ pip install pyobjc-core pyobjc
 Crea un fichero `.env` en la raíz del proyecto (ya está en `.gitignore`, no se sube):
 
 ```bash
-# LLM principal (chat). Usa una de las dos:
-GOOGLE_API_KEY=tu_clave_de_gemini
-# DEEPSEEK_API_KEY=tu_clave_de_deepseek
+# LLM de chat: DeepSeek (por defecto, REQUERIDO).
+DEEPSEEK_API_KEY=tu_clave_de_deepseek
 
-# (Opcional) modelo de chat por defecto
-# HELPDESK_LLM=auto         # auto / google / deepseek
+# LLM de visión (loop visual): Gemini. REQUERIDO si vas a usar automatización.
+GOOGLE_API_KEY=tu_clave_de_gemini
+
+# (Opcional) Si quieres usar Gemini también para chat en lugar de DeepSeek:
+# HELPDESK_LLM=google
 # HELPDESK_CHAT_MODEL=gemini-2.0-flash
 
 # Embeddings para RAG (por defecto HF local, NO requiere clave)
@@ -453,7 +456,7 @@ HELPDESK_DESKTOP_PY_EXEC=1 .venv/bin/python3 -m pytest tests/ -v
 | `GOOGLE_API_KEY` | — | Para Gemini (chat + visión). |
 | `DEEPSEEK_API_KEY` | — | Alternativa a Gemini para chat. |
 | `HELPDESK_LLM` | `auto` | `auto` / `google` / `deepseek`. |
-| `HELPDESK_CHAT_MODEL` | `gemini-2.0-flash` | Modelo de chat. |
+| `HELPDESK_CHAT_MODEL` | `deepseek-chat` | Modelo de chat (DeepSeek por defecto). |
 | `HELPDESK_VISION_MODEL` | `gemini-2.5-flash` | Modelo de visión (loop). |
 | `HELPDESK_EMBEDDINGS` | `hf` | `hf` (local) o `google`. |
 | `HELPDESK_HF_EMBEDDING_MODEL` | multilingual MiniLM | Modelo HF de embeddings. |

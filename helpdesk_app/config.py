@@ -42,20 +42,17 @@ HF_EMBEDDING_MODEL = os.getenv(
 # Solo si HELPDESK_EMBEDDINGS=google (o auto con clave). Modelo actual recomendado por la API Gemini.
 EMBEDDING_MODEL = os.getenv("HELPDESK_EMBEDDING_MODEL", "gemini-embedding-001")
 
-HELPDESK_LLM = os.getenv("HELPDESK_LLM", "auto").lower()
+HELPDESK_LLM = os.getenv("HELPDESK_LLM", "deepseek").lower()
 
 
 def use_deepseek_llm() -> bool:
-    """auto: usa DeepSeek si existe DEEPSEEK_API_KEY; si no, Gemini."""
-    if HELPDESK_LLM == "deepseek":
-        return True
+    """Chat por defecto = DeepSeek. Solo cambia si HELPDESK_LLM=google."""
     if HELPDESK_LLM == "google":
         return False
-    return bool(DEEPSEEK_API_KEY)
+    return True
 
 
-_default_chat = "deepseek-chat" if use_deepseek_llm() else "gemini-2.0-flash"
-CHAT_MODEL = os.getenv("HELPDESK_CHAT_MODEL", _default_chat)
+CHAT_MODEL = os.getenv("HELPDESK_CHAT_MODEL", "deepseek-chat")
 
 LLM_TEMPERATURE = float(os.getenv("HELPDESK_TEMPERATURE", "0.15"))
 
