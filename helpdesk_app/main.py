@@ -464,3 +464,65 @@ def thread_history(thread_id: str):
             break
     last_assistant = strip_helpdesk_ui_block(last_assistant)
     return {"thread_id": thread_id, "messages": out, "last_assistant_text": last_assistant}
+
+
+from fastapi.responses import StreamingResponse
+from helpdesk_app.vision_loop import events as vl_events
+
+
+@app.get("/api/desktop/loop/stream/{run_id}")
+def loop_stream(run_id: str):
+    state = vl_events.get_run(run_id)
+    if state is None:
+        raise HTTPException(404, "run_id desconocido")
+
+    def gen():
+        yield f"event: hello\ndata: {json.dumps({'run_id': run_id})}\n\n"
+        while True:
+            try:
+                msg = state.event_queue.get(timeout=1.0)
+            except Exception:
+                if state.finished and state.event_queue.empty():
+                    yield "event: closed\ndata: {}\n\n"
+                    return
+                yield ": keepalive\n\n"
+                continue
+            yield f"event: {msg['type']}\ndata: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            if msg["type"] in ("done", "fail", "aborted") and state.event_queue.empty():
+                yield "event: closed\ndata: {}\n\n"
+                return
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+class _AbortBody(BaseModel):
+    run_id: str
+
+
+@app.post("/api/desktop/loop/abort")
+def loop_abort(body: _AbortBody):
+    state = vl_events.get_run(body.run_id)
+    if state is None:
+        raise HTTPException(404, "run_id desconocido")
+    state.abort_flag.set()
+    return {"ok": True}
+
+
+class _ConfirmBody(BaseModel):
+    run_id: str
+    approved: bool
+
+
+@app.post("/api/desktop/loop/confirm")
+def loop_confirm(body: _ConfirmBody):
+    state = vl_events.get_run(body.run_id)
+    if state is None:
+        raise HTTPException(404, "run_id desconocido")
+    state.confirm_queue.put(bool(body.approved))
+    return {"ok": True}
+
+
+@app.get("/api/desktop/loop/runs")
+def loop_runs():
+    vl_events.cleanup_old_runs()
+    return {"active": []}
