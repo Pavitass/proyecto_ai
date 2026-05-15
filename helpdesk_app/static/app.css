@@ -1472,6 +1472,7 @@ body {
 #automationPanel #apThumb { width: 100%; border-radius: 4px; margin: 8px 0; }
 #automationPanel ol { font-size: 12px; max-height: 140px; overflow-y: auto; padding-left: 18px; }
 #apConfirmModal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+#apConfirmModal[hidden], #automationPanel[hidden] { display: none !important; }
 #apConfirmModal .ap-modal-card { background: #fff; padding: 16px; border-radius: 8px; max-width: 720px; width: 90%; max-height: 80vh; overflow: auto; }
 #apConfirmModal img { width: 100%; border: 1px solid #ddd; }
 #apConfirmModal pre { background: #f4f4f4; padding: 8px; font-size: 12px; white-space: pre-wrap; }
