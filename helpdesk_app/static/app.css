@@ -1479,3 +1479,28 @@ body {
 #apConfirmModal .ap-modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 #apConfirmModal #apConfirmApprove { background: #2ecc71; color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
 #apConfirmModal #apConfirmCancel { background: #95a5a6; color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+
+.step-cards { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.step-card { border: 1px solid var(--border, #d8dee8); border-radius: 8px; padding: 10px 12px; background: var(--panel, #fff); transition: border-color .15s, background .15s; }
+.step-card[data-status="current"] { border-color: var(--accent, #1d6bc4); box-shadow: 0 0 0 2px rgba(29,107,196,.12); }
+.step-card[data-status="done"] { opacity: .7; background: #f1faf3; border-color: #b2e1c0; }
+.step-card[data-status="done"] .step-text { text-decoration: line-through; color: var(--muted, #5c6b7f); }
+.step-card[data-status="stuck"] { background: #fdf2f2; border-color: #f4b8b8; }
+.step-card .step-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.step-card .step-num { font-weight: 600; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: var(--elev, #f7f9fc); border: 1px solid var(--border, #d8dee8); font-size: 12px; }
+.step-card .step-status-icon { font-size: 16px; }
+.step-card .step-text { flex: 1; }
+.step-card .step-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.step-card .step-actions button { font-size: 12px; padding: 4px 10px; border: 1px solid var(--border, #d8dee8); background: var(--elev, #f7f9fc); border-radius: 6px; cursor: pointer; }
+.step-card .step-actions button:hover { background: #eaf0f7; }
+.step-card .btn-done { color: #1f8a4d; }
+.step-card .btn-stuck { color: #b3261e; }
+.step-card .step-stuck-form { margin-top: 8px; padding: 8px; background: #fff7f7; border-top: 1px dashed #f4b8b8; border-radius: 6px; }
+.step-card .step-stuck-form textarea { width: 100%; box-sizing: border-box; min-height: 60px; font-size: 13px; border: 1px solid var(--border, #d8dee8); border-radius: 4px; padding: 6px; resize: vertical; }
+.step-card .step-stuck-actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+.step-card .step-stuck-actions button { font-size: 12px; padding: 4px 10px; border: 0; border-radius: 4px; cursor: pointer; }
+.step-card .btn-stuck-send { background: #b3261e; color: #fff; }
+.step-card .btn-stuck-cancel { background: #95a5a6; color: #fff; }
+.step-card .btn-stuck-shot { background: var(--elev, #f7f9fc); color: var(--text, #1a2332); border: 1px solid var(--border, #d8dee8); }
+.step-cards-footer { display: flex; justify-content: flex-end; margin: 4px 0 12px; }
+.step-cards-footer .btn-feedback { font-size: 12px; padding: 4px 10px; border: 1px solid var(--border, #d8dee8); background: var(--elev, #f7f9fc); border-radius: 6px; cursor: pointer; }

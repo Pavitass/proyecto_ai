@@ -126,6 +126,7 @@
       threadId = qpThread.trim();
     }
     localStorage.setItem(tidKey, threadId);
+    window.__HELPDESK_THREAD_ID__ = threadId;
     const tidEl = document.getElementById("tid");
     function refreshTidDisplay() {
       tidEl.textContent = threadId.slice(0, 8) + "…";
@@ -358,6 +359,9 @@
       if (isMarkdown) {
         enhanceInteractiveSteps(bubble);
         if (role === "assistant") wireAssistantTaskCheckboxes(bubble);
+        if (role === "assistant" && typeof window.helpdeskEnhanceSteps === "function") {
+          window.helpdeskEnhanceSteps(bubble);
+        }
       }
       log.scrollTop = log.scrollHeight;
       return wrap;
@@ -535,6 +539,7 @@
     document.getElementById("btnNewThread").addEventListener("click", () => {
       threadId = uuid();
       localStorage.setItem(tidKey, threadId);
+      window.__HELPDESK_THREAD_ID__ = threadId;
       refreshTidDisplay();
       if (window.LiveSheet && typeof LiveSheet.reset === "function") LiveSheet.reset();
       log.innerHTML = "";
@@ -1209,6 +1214,11 @@
       ),
       { isMarkdown: true }
     );
+    window.helpdeskSubmitChat = async function (text) {
+      if (!text) return;
+      addMessage("user", text, { isMarkdown: false });
+      try { await submitChatCore({ message: text, screenshots: [], interaction: undefined }); } catch (_) {}
+    };
     loadTickets();
   </script>
 
@@ -1234,6 +1244,8 @@
     </div>
   </div>
 
+  <script src="/static/step_cards.js" defer></script>
+  <script src="/static/widgets.js" defer></script>
   <script src="/static/automation_panel.js" defer></script>
 </body>
 </html>
