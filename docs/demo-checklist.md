@@ -1,0 +1,21 @@
+# Demo Checklist — Mesa de ayuda TI (entrega final)
+
+## 1 hora antes
+- [ ] Vaciar `data/automation_log.jsonl` (mover a `.bak`).
+- [ ] `HELPDESK_DESKTOP_PY_EXEC=1 ../.venv/bin/python3 run.py` y abrir Electron.
+- [ ] **Smoke test del loop**: "abre Spotlight y escribe calculadora" → debe verse cursor moverse, captura cambiar y al final Spotlight con "calculadora".
+- [ ] Verificar permisos macOS: System Settings → Privacy & Security → Accesibilidad y Grabación de pantalla incluyen Python/Electron.
+
+## Demo Outlook web (caso estrella)
+- [ ] Abrir Outlook web manualmente en Safari/Chrome, login hecho, bandeja vacía de drafts.
+- [ ] En el chat: "envíame un correo a <destino> con asunto 'Demo' y cuerpo corto. Hazlo tú en mi Outlook web."
+- [ ] Verificar: panel aparece, cursor se mueve, captura va cambiando, modal de confirmación al pulsar **Enviar**.
+- [ ] **Plan B**: si Outlook pide login o cambia el layout — el actor debe devolver `needs_user` (la UI lo mostrará). Comentarlo como característica.
+
+## Demo RAG rápido
+- [ ] Pregunta: "mi VPN no conecta, qué hago" → debe responder en < 3s sin tocar la web.
+- [ ] Pregunta: "busca en internet la versión última de Cisco AnyConnect" → debe avisar antes de ir a web.
+
+## Cierre
+- [ ] Mostrar `data/automation_log.jsonl` (transparencia: cada paso queda registrado).
+- [ ] Mostrar `data/tickets.sqlite3` con el ticket creado durante la sesión.
