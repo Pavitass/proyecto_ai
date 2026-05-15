@@ -155,7 +155,7 @@ def describe_screenshots(user_message: str, images_b64: list[str]) -> str:
     raise RuntimeError(
         "No hay proveedor de visión configurado. Por defecto se usa **Google (Gemini)**:\n"
         "• Añade GOOGLE_API_KEY en .env (Google AI Studio).\n"
-        "• Opcional: HELPDESK_VISION_MODEL=gemini-2.0-flash\n"
+        "• Opcional: HELPDESK_VISION_MODEL=gemini-2.5-flash\n"
         "Si prefieres OpenAI u otro compatible: HELPDESK_VISION_BACKEND=openai y "
         "HELPDESK_VISION_OPENAI_API_KEY (u OPENAI_API_KEY).\n"
         "Nota: el modelo de chat DeepSeek habitual no analiza imágenes; la visión va por Gemini salvo que fuerces openai."
