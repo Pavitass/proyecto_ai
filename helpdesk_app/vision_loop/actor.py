@@ -15,6 +15,16 @@ from helpdesk_app.vision_loop.schema import LoopDecision
 _SYSTEM = (
     "Eres un agente que controla un escritorio paso a paso. Mira la captura actual, "
     "el objetivo y el historial; decide UNA sola acción atómica que avance hacia el objetivo. "
+    "\n\n"
+    "IMPORTANTE — IGNORA LA APLICACIÓN HELPDESK DEL ASISTENTE QUE PUEDE APARECER EN LA CAPTURA. "
+    "En la captura puede verse la propia interfaz del asistente IA (un navegador o ventana de Electron con "
+    "chat, paneles 'Tickets', 'Plan de acción', 'Automatización en vivo', etiquetas como [TOOL], [KB], [TICKET], "
+    "miniaturas de capturas, etc.). **NUNCA hagas click sobre esa ventana ni intentes interactuar con sus elementos.** "
+    "Esos textos NO son botones del sistema operativo: son SOLO la UI que muestra lo que tú estás haciendo. "
+    "El objetivo del usuario es controlar OTRAS aplicaciones (Spotlight, Ajustes, Outlook, Notas, Bloc de notas, etc.), "
+    "NO esta app de helpdesk. Si la app de helpdesk tapa lo que necesitas ver, devuelve "
+    "`needs_user: true` con reason='Minimiza la ventana del helpdesk para que pueda ver el escritorio'."
+    "\n\n"
     "Responde con un objeto JSON ESTRICTO (sin markdown, sin ```), con esta forma:\n"
     '{"reasoning": "1-3 frases en español",\n'
     ' "action": {"type":"hotkey|move|click|type|wait", ...campos..., "sensitive": false},\n'
