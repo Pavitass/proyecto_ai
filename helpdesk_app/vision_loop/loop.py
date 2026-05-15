@@ -31,9 +31,16 @@ def _auto_hide_enabled() -> bool:
     return os.getenv("HELPDESK_AUTO_HIDE_ON_LOOP", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
-def _auto_hide_foreground_window(sleep_fn) -> None:
+# Estado por run: guardamos el título de la ventana que ocultamos para restaurarla después.
+_HIDDEN_WINDOW_TITLE: dict[str, str] = {}
+
+
+def _auto_hide_foreground_window(state, sleep_fn) -> None:
     """Oculta la ventana en primer plano (presumiblemente la app helpdesk) al inicio
     del loop, para que no aparezca en las capturas y confunda al actor de visión.
+
+    En Windows, guarda el título de la ventana para restaurarla por nombre al final.
+    En macOS, usa Cmd+H (clásico).
     Se puede desactivar con HELPDESK_AUTO_HIDE_ON_LOOP=0."""
     import sys
     if not _auto_hide_enabled():
@@ -41,42 +48,114 @@ def _auto_hide_foreground_window(sleep_fn) -> None:
     try:
         import pyautogui
         if sys.platform == "darwin":
-            # Cmd+H oculta la app activa (browser o Electron)
             pyautogui.hotkey("command", "h")
+            sleep_fn(0.6)
         elif sys.platform.startswith("win"):
-            # Win+Flecha abajo minimiza la ventana activa
+            # Captura el título de la ventana activa ANTES de minimizar
+            try:
+                import pygetwindow as gw
+                active = gw.getActiveWindow()
+                if active and active.title:
+                    _HIDDEN_WINDOW_TITLE[state.run_id] = active.title
+            except Exception:
+                pass
             pyautogui.hotkey("win", "down")
+            sleep_fn(0.6)
         else:
             try:
                 pyautogui.hotkey("winleft", "h")
+                sleep_fn(0.6)
             except Exception:
                 pass
-        sleep_fn(0.6)
     except Exception:
         pass
 
 
-def _auto_restore_helpdesk_window(sleep_fn) -> None:
+def _auto_restore_helpdesk_window(state, sleep_fn) -> None:
     """Trae de vuelta la app helpdesk al terminar el loop, para que el usuario siga viendo
-    el resultado (resumen, panel de trace, ticket, etc.). Solo se ejecuta si el auto-hide
-    estaba activo. Usa Cmd+Tab / Alt+Tab que devuelve a la app anterior (que en condiciones
-    normales es la helpdesk que acabamos de ocultar)."""
+    el resultado (resumen, panel de trace, ticket, etc.).
+
+    En Windows, restauramos por título exacto (más fiable que Alt+Tab).
+    En macOS, Cmd+Tab (la app oculta vuelve al foco).
+    """
     import sys
     if not _auto_hide_enabled():
         return
     try:
         import pyautogui
         if sys.platform == "darwin":
-            # Cmd+Tab vuelve a la app anterior (la que acabamos de ocultar)
             pyautogui.hotkey("command", "tab")
+            sleep_fn(0.4)
         elif sys.platform.startswith("win"):
-            pyautogui.hotkey("alt", "tab")
+            title = _HIDDEN_WINDOW_TITLE.pop(state.run_id, "")
+            restored = False
+            if title:
+                try:
+                    import pygetwindow as gw
+                    matches = gw.getWindowsWithTitle(title)
+                    if matches:
+                        w = matches[0]
+                        # Restaurar desde minimizado y activar
+                        try:
+                            if w.isMinimized:
+                                w.restore()
+                            w.activate()
+                            restored = True
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            if not restored:
+                # Fallback: Alt+Tab estándar
+                pyautogui.hotkey("alt", "tab")
+            sleep_fn(0.4)
+            # Flash de la barra de tareas como feedback adicional (parpadea el icono)
+            _flash_taskbar_windows(title)
         else:
             try:
                 pyautogui.hotkey("alt", "tab")
+                sleep_fn(0.4)
             except Exception:
                 pass
-        sleep_fn(0.4)
+    except Exception:
+        pass
+
+
+def _flash_taskbar_windows(title: str) -> None:
+    """En Windows, hace parpadear el icono de la app en la barra de tareas para llamar
+    la atención del usuario. Usa la API nativa FlashWindowEx vía ctypes."""
+    import sys
+    if not sys.platform.startswith("win") or not title:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        # FindWindow por título
+        hwnd = user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+
+        # FLASHWINFO struct
+        class FLASHWINFO(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.UINT),
+                ("hwnd", wintypes.HWND),
+                ("dwFlags", wintypes.DWORD),
+                ("uCount", wintypes.UINT),
+                ("dwTimeout", wintypes.DWORD),
+            ]
+
+        FLASHW_ALL = 0x00000003
+        FLASHW_TIMERNOFG = 0x0000000C
+        fwi = FLASHWINFO(
+            cbSize=ctypes.sizeof(FLASHWINFO),
+            hwnd=hwnd,
+            dwFlags=FLASHW_ALL | FLASHW_TIMERNOFG,
+            uCount=5,
+            dwTimeout=0,
+        )
+        user32.FlashWindowEx(ctypes.byref(fwi))
     except Exception:
         pass
 
@@ -127,7 +206,7 @@ def run_loop(
 
     # Auto-hide la app helpdesk al inicio para que no aparezca en las capturas
     # (evita el bucle recursivo donde el actor confunde nuestra propia UI con el SO).
-    _auto_hide_foreground_window(sleep_fn)
+    _auto_hide_foreground_window(state, sleep_fn)
 
     history: list[HistoryItem] = []
     t0 = time.time()
@@ -206,4 +285,4 @@ def run_loop(
     finally:
         ev.finish_run(state.run_id)
         # Trae de vuelta la app helpdesk para que el usuario siga viendo el resultado
-        _auto_restore_helpdesk_window(sleep_fn)
+        _auto_restore_helpdesk_window(state, sleep_fn)
