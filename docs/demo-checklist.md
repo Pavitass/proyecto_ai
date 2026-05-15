@@ -23,6 +23,13 @@
 - [ ] Marcar paso 2 como ✕ Atascado con nota corta — el LLM responde con `### Ajuste al paso 2`.
 - [ ] Si el LLM emite `choice` o `severity`, el widget aparece debajo del mensaje y es interactivo.
 
+## Demo tickets por conversación
+- [ ] Iniciar nueva sesión.
+- [ ] Describir incidencia: "Mi VPN no conecta con error de certificado". El agente debe crear un ticket.
+- [ ] Pestaña "Esta conversación" en la barra lateral debe mostrarlo; "Todos" muestra también los previos.
+- [ ] Click en el ticket abre modal con título, prioridad coloreada, descripción y pasos sugeridos.
+- [ ] Botón "Continuar en chat" precarga `[Ticket abc12345] ` en el textarea.
+
 ## Cierre
 - [ ] Mostrar `data/automation_log.jsonl` (transparencia: cada paso queda registrado).
 - [ ] Mostrar `data/tickets.sqlite3` con el ticket creado durante la sesión.
