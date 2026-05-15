@@ -24,7 +24,11 @@ from helpdesk_app.config import (
 from helpdesk_app.desktop_exec_py import run_pyautogui_action
 from helpdesk_app.desktop_plan import DesktopAction, DesktopPlanError, generate_desktop_plan
 from helpdesk_app.graph import build_app_graph
-from helpdesk_app.interactive_block import strip_helpdesk_ui_block
+from helpdesk_app.interactive_block import (
+    ensure_widget_if_info_request,
+    parse_helpdesk_ui_block,
+    strip_helpdesk_ui_block,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -123,6 +127,7 @@ class ChatOut(BaseModel):
     tool_calls_used: list[ToolCallOut] = Field(default_factory=list)
     web_search_used: bool = False
     turn_id: str | None = None
+    helpdesk_ui: dict | None = None  # parsed `helpdesk-ui` widget block
 
 
 class DesktopPlanIn(BaseModel):
@@ -416,6 +421,10 @@ def chat(body: ChatIn):
             reply = (
                 "(Sin respuesta textual del modelo; revisa el historial o las llamadas a herramientas.)"
             )
+        # Red de seguridad: si el LLM pide datos al usuario sin emitir bloque, inyectamos uno genérico.
+        reply = ensure_widget_if_info_request(reply)
+        # Parseamos el bloque (si existe) antes de strippearlo del texto visible.
+        helpdesk_ui = parse_helpdesk_ui_block(reply)
         reply = strip_helpdesk_ui_block(reply)
         desktop_plan = _extract_desktop_plan(msgs)
         desktop_run = _extract_desktop_run(msgs)
@@ -438,6 +447,7 @@ def chat(body: ChatIn):
             vision_used=vision_used,
             desktop_plan=desktop_plan,
             desktop_run=desktop_run,
+            helpdesk_ui=helpdesk_ui,
             sources=sources,
             tool_calls_used=tool_calls_used,
             web_search_used=web_search_used,

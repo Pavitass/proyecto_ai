@@ -1238,9 +1238,12 @@
         if (window.LiveSheet) window.LiveSheet.afterAssistantReply(rawReply, wrap);
         if (typeof window.helpdeskRenderWidgets === "function") {
           try {
-            const m = rawReply && rawReply.match(/```helpdesk-ui\s*([\s\S]*?)```/i);
-            if (m) {
-              const data = JSON.parse(m[1]);
+            let data = j.helpdesk_ui || null;
+            if (!data && rawReply) {
+              const m = rawReply.match(/```helpdesk-ui\s*([\s\S]*?)```/i);
+              if (m) data = JSON.parse(m[1]);
+            }
+            if (data) {
               const container = wrap.querySelector(".md-content") || wrap;
               window.helpdeskRenderWidgets(data, container);
             }
