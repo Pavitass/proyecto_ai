@@ -1,0 +1,22 @@
+[
+  {"id": "q01", "query": "Mi VPN no conecta, sale error de certificado expirado", "expected_sources": ["02_vpn_acceso_remoto.md", "06_memoria_casos_resueltos.md"], "categoria": "red", "prioridad": "alta"},
+  {"id": "q02", "query": "No me llega el correo nuevo en Outlook desde esta mañana", "expected_sources": ["03_correo_y_calendario.md"], "categoria": "correo", "prioridad": "media"},
+  {"id": "q03", "query": "Wi-Fi se desconecta cada 5 minutos en la oficina", "expected_sources": ["04_red_wifi.md"], "categoria": "red", "prioridad": "media"},
+  {"id": "q04", "query": "La impresora del segundo piso saca todo borroso", "expected_sources": ["05_impresoras.md"], "categoria": "impresora", "prioridad": "baja"},
+  {"id": "q05", "query": "Mi Mac va lentísimo, batería se acaba en 2 horas", "expected_sources": ["08_macos_soporte_ti.md"], "categoria": "hardware", "prioridad": "media"},
+  {"id": "q06", "query": "No puedo unirme a la reunión de Teams, dice acceso denegado", "expected_sources": ["09_reuniones_teams_zoom.md"], "categoria": "reuniones", "prioridad": "alta"},
+  {"id": "q07", "query": "Recibí un correo extraño que pide mi contraseña, parece phishing", "expected_sources": ["10_seguridad_phishing_y_credenciales.md"], "categoria": "seguridad", "prioridad": "alta"},
+  {"id": "q08", "query": "Chrome no abre, me dice perfil corrupto", "expected_sources": ["11_navegadores_y_aplicaciones_web.md"], "categoria": "software", "prioridad": "media"},
+  {"id": "q09", "query": "Necesito recuperar un archivo borrado por error de OneDrive", "expected_sources": ["12_onedrive_sharepoint_archivos.md"], "categoria": "almacenamiento", "prioridad": "media"},
+  {"id": "q10", "query": "Olvidé mi contraseña de Windows, no puedo entrar al PC", "expected_sources": ["07_windows_soporte_ti.md", "10_seguridad_phishing_y_credenciales.md"], "categoria": "acceso", "prioridad": "alta"},
+  {"id": "q11", "query": "¿Cuál es la política para abrir un ticket de soporte?", "expected_sources": ["01_politicas_y_tickets.md"], "categoria": "politica", "prioridad": "baja"},
+  {"id": "q12", "query": "El calendario de Outlook no me sincroniza con el del teléfono", "expected_sources": ["03_correo_y_calendario.md"], "categoria": "correo", "prioridad": "baja"},
+  {"id": "q13", "query": "Mi cuenta corporativa quedó bloqueada tras varios intentos fallidos", "expected_sources": ["10_seguridad_phishing_y_credenciales.md", "07_windows_soporte_ti.md"], "categoria": "acceso", "prioridad": "alta"},
+  {"id": "q14", "query": "Quiero compartir una carpeta de SharePoint solo en lectura", "expected_sources": ["12_onedrive_sharepoint_archivos.md"], "categoria": "almacenamiento", "prioridad": "baja"},
+  {"id": "q15", "query": "Mi Windows se reinicia solo a cada rato con pantalla azul", "expected_sources": ["07_windows_soporte_ti.md"], "categoria": "hardware", "prioridad": "alta"},
+  {"id": "q16", "query": "Zoom no detecta mi micrófono en el MacBook", "expected_sources": ["09_reuniones_teams_zoom.md", "08_macos_soporte_ti.md"], "categoria": "reuniones", "prioridad": "media"},
+  {"id": "q17", "query": "Necesito conectarme a la VPN desde un Mac nuevo", "expected_sources": ["02_vpn_acceso_remoto.md", "08_macos_soporte_ti.md"], "categoria": "red", "prioridad": "media"},
+  {"id": "q18", "query": "La impresora no aparece en la lista en mi Windows", "expected_sources": ["05_impresoras.md", "07_windows_soporte_ti.md"], "categoria": "impresora", "prioridad": "media"},
+  {"id": "q19", "query": "¿Cómo activo la autenticación en dos pasos en mi cuenta?", "expected_sources": ["10_seguridad_phishing_y_credenciales.md"], "categoria": "seguridad", "prioridad": "media"},
+  {"id": "q20", "query": "Mi navegador me redirige a páginas que no pedí, ¿es virus?", "expected_sources": ["11_navegadores_y_aplicaciones_web.md", "10_seguridad_phishing_y_credenciales.md"], "categoria": "seguridad", "prioridad": "alta"}
+]
