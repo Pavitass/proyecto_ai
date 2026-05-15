@@ -306,3 +306,4 @@ Pide explícitamente "hazlo tú" / "en mi equipo" para que use `ejecutar_tarea_e
 ## Licencia
 
 Proyecto académico. Uso interno.
+# proyecto_ai
