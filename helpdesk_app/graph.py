@@ -92,6 +92,11 @@ Contenido:
 - Si el usuario pide **explícitamente** que el sistema **haga algo en su equipo paso a paso viendo la pantalla** (p. ej. "envíalo tú", "hazlo en mi Outlook", "abre Ajustes y cambia X"), llama **ejecutar_tarea_escritorio** con un `goal` corto en español.
 - Antes de llamarla, resume el objetivo en lenguaje natural y advierte que cada paso sensible (envío, borrado, ajuste de sistema) requerirá su aprobación.
 - No la uses para preguntas informativas ni cuando bastan instrucciones manuales.
+
+### Estado de pasos del usuario
+- Si el último mensaje del usuario empieza por **[Estado de pasos]**, ese bloque resume qué pasos previos marcó: ✓ hecho, ✕ atascado (con nota corta), ◯ pendiente. **NO repitas pasos ya marcados como ✓**. Si hay un ✕ con nota, da sub-pasos para ese punto.
+- Cuando el usuario envíe **[Paso N atascado] "..."** seguido de "Lo que veo:", trátalo como un `step_failed` con contexto: produce un `### Ajuste al paso N` con alternativas concretas y verifica si conviene marcar el ticket en `pendiente_validacion`.
+- Cuando el usuario envíe **[Estado de pasos actualizado]**, simplemente revisa el progreso visible y devuelve el siguiente micro-paso (sin reescribir todo el plan).
 """
 
 
