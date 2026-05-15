@@ -96,13 +96,27 @@
   </div>
 
   <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal">
+    <div class="modal tk-modal-card">
       <button type="button" class="close-x" id="modalClose" aria-label="Cerrar">&times;</button>
-      <h2 id="modalTitle">Ticket</h2>
+      <div class="tk-head">
+        <h2 id="modalTitle">Ticket</h2>
+        <div class="tk-chips" id="tkChips" hidden>
+          <span id="tkPriority" class="priority-chip">—</span>
+          <span id="tkCategory" class="muted-chip">—</span>
+          <span id="tkState" class="muted-chip">—</span>
+        </div>
+        <code id="tkId" class="muted" hidden></code>
+      </div>
       <div class="modal-actions" id="modalActions" hidden>
         <button type="button" class="btn-danger" id="btnDeleteTicket">Eliminar ticket</button>
       </div>
       <div id="modalBody" class="md-content"></div>
+      <footer class="tk-foot" id="tkFoot" hidden>
+        <span id="tkDates" class="muted"></span>
+        <div class="tk-actions">
+          <button type="button" id="tkContinue" class="btn-primary">Continuar en chat</button>
+        </div>
+      </footer>
     </div>
   </div>
 
@@ -499,54 +513,102 @@
       const body = document.getElementById("modalBody");
       const title = document.getElementById("modalTitle");
       const modalActions = document.getElementById("modalActions");
+      const chips = document.getElementById("tkChips");
+      const foot = document.getElementById("tkFoot");
+      const tkIdEl = document.getElementById("tkId");
       body.innerHTML = "<p class=\"muted\">Cargando…</p>";
       title.textContent = "Ticket";
       modalActions.hidden = true;
+      if (chips) chips.hidden = true;
+      if (foot) foot.hidden = true;
+      if (tkIdEl) tkIdEl.hidden = true;
       bd.classList.add("open");
       bd.setAttribute("aria-hidden", "false");
       try {
         const r = await fetch("/api/tickets/" + encodeURIComponent(id));
-        const t = await r.json();
-        if (!r.ok) throw new Error(t.detail || "Error");
-        title.textContent = t.titulo;
+        const raw = await r.json();
+        if (!r.ok) throw new Error((raw && raw.detail) || "Error");
+        const t = raw && raw.ticket ? raw.ticket : raw;
+        title.textContent = t.titulo || "(sin título)";
         modalActions.hidden = false;
+        // chips
+        const prio = (t.prioridad || "").toLowerCase();
+        const prioEl = document.getElementById("tkPriority");
+        prioEl.textContent = prio || "—";
+        prioEl.className = "priority-chip priority-" + (["alta","media","baja"].includes(prio) ? prio : "neutral");
+        document.getElementById("tkCategory").textContent = t.categoria || "—";
+        document.getElementById("tkState").textContent = t.estado || "—";
+        if (chips) chips.hidden = false;
+        if (tkIdEl) { tkIdEl.textContent = "ID: " + (t.id || ""); tkIdEl.hidden = false; }
+        // body sections
         const mdParts = [
-          `**ID:** \`${t.id}\``,
-          `**Estado:** ${t.estado}`,
-          `**Prioridad:** ${t.prioridad} · **Categoría:** ${t.categoria}`,
-          "",
           "### Descripción",
-          t.descripcion_usuario,
+          t.descripcion_usuario || "",
           "",
           "### Pasos sugeridos",
-          t.pasos_sugeridos,
-          "",
-          "### Fuentes KB",
-          Array.isArray(t.fuentes_kb) ? t.fuentes_kb.map((x) => "- " + x).join("\n") : String(t.fuentes_kb || ""),
-          t.motivo_escalacion ? "\n### Escalado\n" + t.motivo_escalacion : "",
+          t.pasos_sugeridos || "",
         ];
+        if (Array.isArray(t.fuentes_kb) && t.fuentes_kb.length) {
+          mdParts.push("", "### Fuentes KB", t.fuentes_kb.map((x) => "- " + x).join("\n"));
+        } else if (typeof t.fuentes_kb === "string" && t.fuentes_kb.trim()) {
+          mdParts.push("", "### Fuentes KB", t.fuentes_kb);
+        }
+        if (t.motivo_escalacion) {
+          mdParts.push("", "### Escalado", t.motivo_escalacion);
+        }
         if (t.resolucion_final) {
-          mdParts.push("", "### Lección registrada", t.resolucion_final);
+          mdParts.push("", "### Resolución", t.resolucion_final);
         }
-        if (t.resolved_at) {
-          mdParts.push("", "### Fecha de resolución", t.resolved_at);
-        }
-        const md = mdParts.join("\n");
-        body.innerHTML = renderMarkdown(md);
+        body.innerHTML = renderMarkdown(mdParts.join("\n"));
         enhanceInteractiveSteps(body);
+        // dates footer
+        const parts = [];
+        if (t.created_at) parts.push("Creado: " + new Date(t.created_at).toLocaleString());
+        if (t.resolved_at) parts.push("Resuelto: " + new Date(t.resolved_at).toLocaleString());
+        const datesEl = document.getElementById("tkDates");
+        if (datesEl) datesEl.textContent = parts.join(" · ");
+        if (foot) foot.hidden = false;
+        bd._currentTicketId = t.id;
       } catch (e) {
         body.innerHTML = `<p class="plain">Error: ${escapeHtml(e.message)}</p>`;
         modalActions.hidden = true;
+        if (chips) chips.hidden = true;
+        if (foot) foot.hidden = true;
+        if (tkIdEl) tkIdEl.hidden = true;
       }
     }
+
+    window.helpdeskOpenTicket = openTicketModal;
 
     function closeModal() {
       currentModalTicketId = null;
       const bd = document.getElementById("modalBackdrop");
       document.getElementById("modalActions").hidden = true;
+      const chips = document.getElementById("tkChips");
+      const foot = document.getElementById("tkFoot");
+      const tkIdEl = document.getElementById("tkId");
+      if (chips) chips.hidden = true;
+      if (foot) foot.hidden = true;
+      if (tkIdEl) tkIdEl.hidden = true;
       bd.classList.remove("open");
       bd.setAttribute("aria-hidden", "true");
     }
+
+    (function () {
+      const cont = document.getElementById("tkContinue");
+      if (!cont) return;
+      cont.addEventListener("click", () => {
+        const bd = document.getElementById("modalBackdrop");
+        const id = (bd && bd._currentTicketId) || currentModalTicketId || "";
+        const msgEl = document.getElementById("msg");
+        if (msgEl) {
+          msgEl.value = "[Ticket " + String(id).slice(0, 8) + "] ";
+          msgEl.focus();
+          if (typeof syncMsgTextareaHeight === "function") syncMsgTextareaHeight();
+        }
+        closeModal();
+      });
+    })();
 
     document.getElementById("btnDeleteTicket").addEventListener("click", async () => {
       if (!currentModalTicketId) return;

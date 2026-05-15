@@ -1528,3 +1528,14 @@ body {
 .priority-baja { background: #e2e8ef; color: #4a5a73; }
 .priority-neutral { background: var(--elev); color: var(--muted); }
 .ticket-id { font-size: 0.65rem; color: var(--accent); }
+
+/* Ticket detail modal ----- */
+.tk-modal-card .tk-head { margin-bottom: 6px; }
+.tk-modal-card .tk-head h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.tk-modal-card .tk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.tk-modal-card .muted-chip { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--elev); border: 1px solid var(--border); color: var(--muted); }
+.tk-modal-card #tkId { display: inline-block; font-size: 0.7rem; color: var(--muted); }
+.tk-modal-card .tk-foot { margin-top: 18px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 12px; }
+.tk-modal-card .tk-actions { display: flex; gap: 8px; }
+.tk-modal-card .btn-primary { background: var(--accent); color: #fff; border: 0; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+.tk-modal-card .btn-primary:hover { filter: brightness(1.1); }
