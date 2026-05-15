@@ -19,9 +19,15 @@
         <span class="logo" aria-hidden="true">HD</span>
         <div><strong>HelpDesk IA</strong></div>
       </div>
-      <div class="panel">
-        <h3>Tickets recientes</h3>
-        <div id="tickets" class="tickets"></div>
+      <div class="panel" id="ticketsPanel">
+        <div class="tickets-header">
+          <h3>Tickets</h3>
+          <div class="tickets-tabs">
+            <button type="button" class="tab-btn active" data-scope="thread">Esta conversación</button>
+            <button type="button" class="tab-btn" data-scope="all">Todos</button>
+          </div>
+        </div>
+        <div class="tickets" id="tickets"></div>
       </div>
       <p class="foot muted">Sesión: <code id="tid"></code></p>
     </aside>
@@ -424,38 +430,68 @@
       return false;
     }
 
+    let _ticketsScope = "thread";
+
     async function loadTickets() {
-      const box = document.getElementById("tickets");
+      const tid = window.__HELPDESK_THREAD_ID__ || "";
+      const url = (_ticketsScope === "thread" && tid)
+        ? "/api/tickets?thread_id=" + encodeURIComponent(tid)
+        : "/api/tickets";
+      let data = { tickets: [] };
       try {
-        const r = await fetch("/api/tickets");
-        const j = await r.json();
-        box.innerHTML = "";
-        (j.tickets || []).forEach((t) => {
-          const row = document.createElement("div");
-          row.className = "ticket-row";
-          const el = document.createElement("button");
-          el.type = "button";
-          el.className = "ticket";
-          el.innerHTML = `<strong>${escapeHtml(t.titulo)}</strong><span class="muted">${escapeHtml(t.prioridad)} · ${escapeHtml(t.estado)}</span><code>${escapeHtml(t.id.slice(0, 8))}…</code>`;
-          el.addEventListener("click", () => openTicketModal(t.id));
-          const del = document.createElement("button");
-          del.type = "button";
-          del.className = "btn-ticket-del";
-          del.title = "Eliminar ticket";
-          del.setAttribute("aria-label", "Eliminar");
-          del.textContent = "×";
-          del.addEventListener("click", (e) => {
-            e.stopPropagation();
-            deleteTicketById(t.id);
-          });
-          row.appendChild(el);
-          row.appendChild(del);
-          box.appendChild(row);
+        const r = await fetch(url);
+        if (r.ok) data = await r.json();
+      } catch (_) {}
+      const root = document.getElementById("tickets");
+      if (!root) return;
+      root.innerHTML = "";
+      if (!data.tickets || !data.tickets.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.style.padding = "8px 4px";
+        empty.textContent = _ticketsScope === "thread"
+          ? "Sin tickets en esta conversación todavía."
+          : "Sin tickets registrados.";
+        root.appendChild(empty);
+        return;
+      }
+      for (const t of data.tickets) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "ticket";
+        card.dataset.id = t.id;
+        const prio = (t.prioridad || "").toLowerCase();
+        const chipClass = ["alta","media","baja"].includes(prio) ? prio : "neutral";
+        card.innerHTML = `
+          <div class="ticket-row1">
+            <span class="ticket-title">${(t.titulo || "(sin título)").replace(/</g,"&lt;")}</span>
+            <span class="priority-chip priority-${chipClass}">${prio || "—"}</span>
+          </div>
+          <div class="ticket-row2">
+            <span class="ticket-cat">${(t.categoria || "").replace(/</g,"&lt;")}</span>
+            <span class="ticket-state">${(t.estado || "").replace(/</g,"&lt;")}</span>
+          </div>
+          <code class="ticket-id">${String(t.id || "").slice(0, 8)}…</code>
+        `;
+        card.addEventListener("click", () => {
+          if (typeof window.helpdeskOpenTicket === "function") {
+            window.helpdeskOpenTicket(t.id);
+          } else if (typeof openTicketModal === "function") {
+            openTicketModal(t.id);
+          }
         });
-      } catch (e) {
-        box.textContent = "No se pudieron cargar tickets.";
+        root.appendChild(card);
       }
     }
+
+    document.querySelectorAll(".tickets-tabs .tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tickets-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        _ticketsScope = btn.dataset.scope || "thread";
+        loadTickets();
+      });
+    });
 
     async function openTicketModal(id) {
       currentModalTicketId = id;
@@ -552,6 +588,7 @@
         ),
         { isMarkdown: true }
       );
+      loadTickets();
     });
 
     let lastAssistantRawReply = "";
