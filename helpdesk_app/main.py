@@ -426,7 +426,9 @@ def chat(body: ChatIn):
 
 
 @app.get("/api/tickets")
-def list_tickets():
+def list_tickets(thread_id: str | None = None):
+    if thread_id:
+        return {"tickets": db.listar_tickets_por_thread(thread_id.strip(), 80)}
     return {"tickets": db.listar_tickets(80)}
 
 
