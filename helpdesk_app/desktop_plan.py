@@ -16,45 +16,25 @@ _MAX_ACTIONS = 22
 
 _ALLOWED_HOTKEY_KEYS = frozenset(
     {
-        "LeftCmd",
-        "LeftSuper",
-        "LeftWin",
-        "RightWin",
-        "Space",
-        "Return",
-        "Enter",
-        "Tab",
-        "Escape",
-        "Up",
-        "Down",
-        "Left",
-        "Right",
-        "A",
-        "B",
-        "C",
-        "D",
-        "E",
-        "F",
-        "G",
-        "H",
-        "I",
-        "J",
-        "K",
-        "L",
-        "M",
-        "N",
-        "O",
-        "P",
-        "Q",
-        "R",
-        "S",
-        "T",
-        "U",
-        "V",
-        "W",
-        "X",
-        "Y",
-        "Z",
+        # Modifiers — macOS
+        "LeftCmd", "RightCmd", "LeftSuper",
+        # Modifiers — Windows
+        "LeftWin", "RightWin",
+        # Modifiers — cross-platform
+        "Control", "LeftControl", "RightControl", "Ctrl", "LeftCtrl", "RightCtrl",
+        "Shift", "LeftShift", "RightShift",
+        "Alt", "LeftAlt", "RightAlt", "Option", "LeftOption",
+        # Navigation
+        "Space", "Return", "Enter", "Tab", "Escape", "Backspace", "Delete",
+        "Home", "End", "PageUp", "PageDown",
+        "Up", "Down", "Left", "Right",
+        # Function keys
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+        # Letters
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+        "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+        # Digits
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     }
 )
 

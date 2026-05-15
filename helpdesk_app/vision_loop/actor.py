@@ -27,6 +27,13 @@ _SYSTEM = (
     "- Marca sensitive:true en envíos de correos, borrados, ajustes del sistema.\n"
     "- Acciones permitidas (mismo schema que el resto del sistema):\n"
     '  * {"type":"hotkey","keys":["LeftCmd","Space"],"delayMs":400}\n'
+    "    Teclas permitidas: LeftCmd, LeftWin, Control, Shift, Alt, Option, "
+    "Space, Return, Enter, Tab, Escape, Backspace, Delete, Home, End, PageUp, PageDown, "
+    "Up, Down, Left, Right, F1-F12, A-Z, 0-9. "
+    "macOS usa LeftCmd; Windows usa LeftWin para tecla Windows o Control para Ctrl. "
+    "Ejemplos: ['LeftCmd','Space'] (Spotlight macOS), ['LeftWin'] (Inicio Windows), "
+    "['Control','Shift','Escape'] (Task Manager), ['LeftCmd','C'] (copiar macOS), "
+    "['Control','C'] (copiar Windows). NO uses 'Cmd' sin Left/Right, NO uses 'Win'.\n"
     '  * {"type":"move","x":0.5,"y":0.5,"delayMs":200}  (x,y en fracción 0..1)\n'
     '  * {"type":"click","button":"left","delayMs":150}\n'
     '  * {"type":"type","text":"texto","delayMs":120}\n'

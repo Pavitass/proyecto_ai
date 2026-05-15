@@ -7,6 +7,15 @@ import time
 from typing import Any
 
 _ARROW_PG = {"Up": "up", "Down": "down", "Left": "left", "Right": "right"}
+_FN_PG = {f"F{i}": f"f{i}" for i in range(1, 13)}
+_NAV_PG = {
+    "Backspace": "backspace",
+    "Delete": "delete",
+    "Home": "home",
+    "End": "end",
+    "PageUp": "pageup",
+    "PageDown": "pagedown",
+}
 
 
 def _pg_key_token(name: str) -> str:
@@ -15,10 +24,19 @@ def _pg_key_token(name: str) -> str:
     mac = sys.platform == "darwin"
     win = sys.platform.startswith("win")
 
-    if n in ("LeftCmd", "LeftSuper"):
+    # Comando macOS / Win
+    if n in ("LeftCmd", "RightCmd", "LeftSuper"):
         return "command" if mac else "win"
     if n in ("LeftWin", "RightWin"):
         return "win" if (win or not mac) else "command"
+    # Modificadores cross-platform
+    if n in ("Control", "Ctrl", "LeftControl", "LeftCtrl", "RightControl", "RightCtrl"):
+        return "ctrl"
+    if n in ("Shift", "LeftShift", "RightShift"):
+        return "shift"
+    if n in ("Alt", "LeftAlt", "RightAlt", "Option", "LeftOption"):
+        return "alt" if not mac else "option"
+    # Navegación
     if n == "Space":
         return "space"
     if n in ("Return", "Enter"):
@@ -29,7 +47,12 @@ def _pg_key_token(name: str) -> str:
         return "esc"
     if n in _ARROW_PG:
         return _ARROW_PG[n]
-    if len(n) == 1 and n.isalpha():
+    if n in _NAV_PG:
+        return _NAV_PG[n]
+    if n in _FN_PG:
+        return _FN_PG[n]
+    # Letras y dígitos
+    if len(n) == 1 and (n.isalpha() or n.isdigit()):
         return n.lower()
     raise ValueError(f"Tecla no soportada en PyAutoGUI: {n}")
 
