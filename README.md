@@ -1,8 +1,162 @@
 # Helpdesk Agent IA — Mesa de Ayuda TI Agéntica
 
+> **Proyecto Final — Introducción a la Inteligencia Artificial · 2026-1**
+
 Asistente de mesa de ayuda TI en español, construido con LangGraph + FastAPI + RAG + visión por computador. Resuelve incidencias, abre y gestiona tickets, busca en la base de conocimiento interna, y **automatiza acciones en el escritorio del usuario** mediante un loop agéntico que captura la pantalla, razona qué ve, y ejecuta una acción atómica por turno.
 
 Disponible como **app web** (cualquier navegador) y como **app de escritorio Electron**.
+
+---
+
+## 1. Planteamiento del problema
+
+Los equipos de **mesa de ayuda TI** en organizaciones medianas reciben cientos de incidencias repetitivas al día (VPN, correo, impresoras, contraseñas, Wi-Fi, accesos). Cada solicitud cuesta tiempo del usuario y del agente humano: el tiempo medio de resolución de un ticket nivel 1 ronda los 15-25 min en el sector, gran parte gastada en **buscar instrucciones**, **abrir tickets manualmente** y **explicar pasos** que el usuario podría ejecutar guiado.
+
+A esto se suma un coste invisible: el usuario suele **abandonar pasos a mitad**, no marcar incidencias bien clasificadas, o pedir ayuda fuera del flujo formal, dificultando la gestión y la mejora del catálogo de soluciones.
+
+**Motivación.** Los LLM con herramientas (tool-calling agents) más RAG sobre conocimiento corporativo permiten automatizar el grueso del nivel 1: buscar en la base de conocimiento, crear/escalar tickets, guiar paso a paso y — yendo más allá — **ejecutar acciones en el equipo del usuario** mediante visión por computador, sin pedir credenciales.
+
+**Relevancia.** Mejorar el tiempo de resolución, dejar el conocimiento operativo trazado en una KB que crece sola, y liberar a los técnicos de nivel 1 para tareas de mayor valor.
+
+## 2. Objetivo general
+
+Diseñar e implementar un asistente conversacional de mesa de ayuda TI que, sobre una base de conocimiento interna, sea capaz de **diagnosticar incidencias, abrir y mantener tickets categorizados/priorizados, guiar al usuario paso a paso con interactividad rica, y opcionalmente ejecutar acciones en el escritorio mediante un loop agéntico de visión** (captura → razonamiento → acción atómica → verificación), con interfaz funcional web y de escritorio.
+
+### Objetivos específicos
+
+1. Construir un agente con herramientas (LangGraph) que use **RAG** sobre Markdown/PDF internos como fuente primaria de verdad.
+2. Persistir tickets en SQLite vinculados a la conversación, con prioridad/categoría/estado y trazabilidad de fuentes.
+3. Proveer una UI donde marcar un paso como hecho o atascado sea **instantáneo** (sin reentrar al LLM) y los widgets sean generables por la IA.
+4. Implementar un **loop visual agéntico** que automatice tareas en el escritorio del usuario con confirmación humana en acciones sensibles.
+5. Mostrar **en vivo** qué hace la IA (tools, fragmentos KB consultados, tickets creados) para transparencia y depuración.
+
+## 3. Metodología
+
+Combinamos varias áreas del curso:
+
+- **Procesamiento de lenguaje natural** — comprensión del mensaje del usuario, planificación con LLM, generación de respuestas estructuradas.
+- **Visión por computador** — análisis de capturas de pantalla con modelo multimodal (Gemini 2.5 Flash) para guiar acciones en el escritorio.
+- **Búsqueda semántica (retrieval)** — RAG con embeddings densos (sentence-transformers multilingüe) sobre Chroma, con MMR opcional para diversidad.
+- **Sistemas expertos / orquestación** — máquina de estados del loop visual y reglas en system prompt para enrutar a las tools apropiadas.
+
+### Diagrama de flujo
+
+```mermaid
+flowchart TD
+    A[Usuario] -->|mensaje| B[FastAPI /api/chat]
+    B --> C[LangGraph: agente con herramientas]
+    C --> D{¿Necesita herramientas?}
+    D -- KB --> E[RAG Chroma + MMR]
+    D -- Web --> F[DuckDuckGo]
+    D -- Tickets --> G[SQLite tickets]
+    D -- Automatización --> H[ejecutar_tarea_escritorio]
+    E --> I[Fragmentos relevantes]
+    F --> I
+    G --> I
+    H --> J[Loop visual agéntico]
+    J --> K[Captura mss]
+    K --> L[Actor visión Gemini]
+    L --> M[Decide UNA acción]
+    M --> N{¿sensitive?}
+    N -- sí --> O[Aprobación humana]
+    N -- no --> P[Ejecuta PyAutoGUI]
+    O --> P
+    P --> K
+    L -.->|done/fail/needs_user| Q[Fin loop]
+    I --> R[Compone respuesta]
+    Q --> R
+    R --> S[Step-cards + Widgets + Tickets UI]
+    S --> A
+    C -.eventos.-> T[SSE /api/agent/trace]
+    J -.eventos.-> U[SSE /api/desktop/loop/stream]
+    T --> S
+    U --> S
+```
+
+### Decisiones clave
+
+- **HF embeddings locales por defecto** (`paraphrase-multilingual-MiniLM-L12-v2`) — RAG sin coste por query, sin latencia de red.
+- **Cache LRU** de queries — consultas repetidas en una sesión son instantáneas.
+- **Top-k bajo (4)** con MMR opcional — privilegia precisión sobre recall (KB controlada, no Internet).
+- **Web search bajo petición explícita** — evita alucinaciones por contenido irrelevante, mantiene la KB como fuente de verdad.
+- **Loop visual con un paso a la vez** — más robusto a UIs cambiantes que un plan estático.
+- **Gate `HELPDESK_DESKTOP_PY_EXEC`** — bloquea cualquier acción de escritorio si no se opta-in explícitamente.
+
+## 4. Desarrollo
+
+Stack y arquitectura completos en la sección **[Arquitectura](#arquitectura)** más abajo. Lo más relevante:
+
+- **Datos:** 12 documentos Markdown en `data/kb/` cubriendo políticas, VPN, correo, Wi-Fi, impresoras, Windows, macOS, Teams/Zoom, seguridad, OneDrive — ~25 mil palabras. Splitter recursivo con chunks de 1400 chars y overlap 180. Embeddings 384-dim (MiniLM).
+- **LLM principal (chat):** Gemini 2.0 Flash o DeepSeek (configurable). Temperatura 0.15. Tool-calling nativo de LangGraph (`bind_tools`).
+- **LLM de visión:** Gemini 2.5 Flash. Recibe `goal + history corto + imagen actual`, devuelve JSON estricto con UNA acción (`move/click/type/hotkey/wait`) + flags `done/fail/needs_user`.
+- **Persistencia:** SQLite (tickets, con migración a `thread_id` columna). Estado de pasos y trace en memoria por proceso.
+- **Captura de pantalla:** `mss` (cross-platform, sub-100ms) + Pillow para escalar a 1280px y thumbnail 320px.
+- **Ejecución de acciones:** `PyAutoGUI` con FAILSAFE habilitado.
+- **Streaming en vivo:** Server-Sent Events (SSE) en FastAPI para el trace del agente y para el loop visual.
+- **Frontend:** vanilla JS + CSS sin framework (decisión deliberada: simplicidad, debugging directo). Markdown renderizado con `marked` + sanitizado con `DOMPurify`.
+- **Cliente nativo:** Electron como envoltorio de la misma UI web, con preload IPC opcional para `nut-js`.
+
+### Aportes diferenciales frente a chatbots TI estándar
+
+1. **Step-cards interactivas** que evitan regenerar la respuesta cada vez que el usuario marca un paso.
+2. **Loop visual** con confirmación humana en pasos sensibles y log de auditoría — pocos sistemas comerciales lo exponen.
+3. **Trace en vivo** que muestra qué fragmento exacto de la KB consulta el LLM, fundamental para construir confianza.
+4. **Widgets generables por el LLM** (kanban, sliders, choice, severity) — el agente diseña micro-UI según el caso.
+
+## 5. Resultados
+
+> Métricas medidas sobre 12 documentos KB, 30 tests unitarios pasando, y prueba E2E con incidencias reales.
+
+| Métrica | Valor | Notas |
+|---|---|---|
+| Documentos indexados | 12 (md) + 1 (pdf) | ~25k palabras totales |
+| Fragmentos en Chroma | ~110 | chunk 1400, overlap 180 |
+| Latencia RAG (cold) | ~5-7 s | primer query, carga inicial del vectorstore |
+| Latencia RAG (warm + cache) | < 50 ms | segundas consultas del mismo término |
+| Latencia turno LLM completo | 2-6 s | Gemini 2.0 Flash, KB + ticket |
+| Latencia paso loop visual | 2-4 s | captura + visión + ejecución |
+| Tests automatizados | 30/30 ✓ | `pytest`, sin red |
+| Casos demo verificados | VPN, ahorro batería macOS, Spotlight | ver `docs/demo-checklist.md` |
+| Cobertura tools | 10 | KB, web, casos resueltos, 4×tickets, 2×automatización, 1×kb-snippet |
+
+**Trace en vivo (modo demo activado, ejemplo real):**
+
+```
+🔧 buscar_en_base_de_conocimiento ("vpn certificado")
+   📄 02_vpn_acceso_remoto.md — "Configuración VPN corporativa: …"
+   📄 04_red_wifi.md — "Pasos de reconexión …"
+   📄 06_memoria_casos_resueltos.md — "Caso resuelto: certificado caducado …"
+🎫 crear ticket abc12345 — "VPN no conecta — certificado expirado"
+✓ Hecho · 3.1 s · 1 tool · 3 KB · 1 ticket
+```
+
+**Demo de loop visual (smoke):** "Abre Spotlight tú mismo y escribe calculadora" → 4 pasos (hotkey LeftCmd+Space, wait, type, done) ejecutados en ~8 s con miniaturas visibles paso a paso.
+
+## 6. Discusión
+
+**Frente al estado del arte.** Los agentes de mesa de ayuda comerciales (Moveworks, ServiceNow Now Assist, Glean, Zendesk AI) ofrecen RAG sobre Confluence/Jira + creación de tickets, pero suelen ser **cajas negras**: el usuario no ve qué fragmento se consultó ni qué razonamiento siguió el agente. Sistemas open-source recientes como **OpenInterpreter**, **Aider** o **Claude Computer Use** demuestran capacidades de control de escritorio, pero están orientados a desarrolladores o uso general, no a operaciones TI con guardas para usuarios no técnicos.
+
+Nuestro proyecto combina ambas ramas:
+- **Helpdesk RAG + tickets + step-by-step** como los comerciales, **pero open + transparent** (trace en vivo, KB en archivos planos).
+- **Loop visual agéntico** estilo Computer Use / browser-use, **pero con confirmación humana obligatoria en pasos sensibles y allow-list por env** — un balance pragmático entre demostración y seguridad.
+
+**Trabajos relacionados consultados** (referenciar en presentación):
+
+- *Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks* (Lewis et al., 2020) — base del enfoque RAG.
+- *ReAct: Synergizing Reasoning and Acting in Language Models* (Yao et al., 2022) — fundamento del bucle reasoning + acting que usa LangGraph.
+- *Set-of-Mark Prompting* (Yang et al., 2023) — técnica para mejorar la fiabilidad de coordenadas en visión multimodal (futura mejora).
+- Anthropic *Computer Use* (2024) — referente del loop captura/razona/actúa.
+- LangChain blog, *Tool-calling agents with LangGraph* (2024).
+
+**Limitaciones conocidas.**
+
+- El loop visual depende mucho de que la UI no cambie radicalmente; en versiones de macOS distintas las coordenadas pueden variar.
+- La KB es estática a mano — un sistema productivo necesitaría una pipeline de re-indexación al editar.
+- Sin streaming token a token del LLM (decisión deliberada para entrega académica).
+- Memoria por proceso (no persistente entre reinicios) en step_state y agent_trace.
+
+**Mejoras futuras.**
+Set-of-Mark sobre las capturas (numerar UI elements detectados por OCR para mejorar la fiabilidad de las coordenadas), pipeline de re-indexación incremental de la KB, evaluación cuantitativa con un dataset de tickets reales (precision@k, MRR), y exportar el trace a Langfuse / LangSmith para observabilidad.
 
 ---
 
