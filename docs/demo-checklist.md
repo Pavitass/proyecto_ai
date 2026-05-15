@@ -33,3 +33,14 @@
 ## Cierre
 - [ ] Mostrar `data/automation_log.jsonl` (transparencia: cada paso queda registrado).
 - [ ] Mostrar `data/tickets.sqlite3` con el ticket creado durante la sesión.
+
+## Demo actividad del agente en vivo
+- [ ] Activar **Modo demo** en la cabecera (checkbox).
+- [ ] Preguntar "Mi VPN no conecta con certificado expirado".
+- [ ] Mientras el agente piensa, debe verse en vivo:
+  - 🔧 buscar_en_base_de_conocimiento ("vpn no conecta")
+  - 📄 02_vpn_acceso_remoto.md — preview
+  - 📄 04_red_wifi.md — preview
+  - 🎫 crear ticket abc12345 — VPN no conecta
+- [ ] Al final: "✓ Hecho · 2.3s · 3 tools · 5 KB".
+- [ ] Sin Modo demo, la tarjeta se colapsa sola tras 1.5s y queda accesible con `▾`.

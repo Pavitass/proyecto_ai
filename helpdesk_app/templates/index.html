@@ -35,6 +35,9 @@
       <header class="topbar">
         <h1>Asistente de soporte</h1>
         <button type="button" class="btn-ghost" id="btnNewThread" title="Nueva conversación">Nueva sesión</button>
+        <label class="demo-toggle" title="Mantener visible la actividad del agente">
+          <input type="checkbox" id="demoTraceToggle" /> Modo demo
+        </label>
       </header>
       <div class="quick-row" id="quickRow" aria-label="Accesos rápidos"></div>
       <div id="log" class="chat-log"></div>
@@ -636,6 +639,15 @@
       });
       qr.appendChild(b);
     });
+
+    (function () {
+      const cb = document.getElementById("demoTraceToggle");
+      if (!cb) return;
+      cb.checked = localStorage.getItem("hd_demo_trace") === "1";
+      cb.addEventListener("change", () => {
+        localStorage.setItem("hd_demo_trace", cb.checked ? "1" : "0");
+      });
+    })();
 
     document.getElementById("btnNewThread").addEventListener("click", () => {
       threadId = uuid();
