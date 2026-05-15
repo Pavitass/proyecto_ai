@@ -105,32 +105,64 @@ Stack y arquitectura completos en la sección **[Arquitectura](#arquitectura)** 
 
 ## 5. Resultados
 
-> Métricas medidas sobre 12 documentos KB, 30 tests unitarios pasando, y prueba E2E con incidencias reales.
+### 5.1 Métricas del sistema
 
 | Métrica | Valor | Notas |
 |---|---|---|
-| Documentos indexados | 12 (md) + 1 (pdf) | ~25k palabras totales |
+| Documentos indexados | 12 md + 1 pdf | ~25k palabras totales |
 | Fragmentos en Chroma | ~110 | chunk 1400, overlap 180 |
-| Latencia RAG (cold) | ~5-7 s | primer query, carga inicial del vectorstore |
-| Latencia RAG (warm + cache) | < 50 ms | segundas consultas del mismo término |
 | Latencia turno LLM completo | 2-6 s | Gemini 2.0 Flash, KB + ticket |
-| Latencia paso loop visual | 2-4 s | captura + visión + ejecución |
-| Tests automatizados | 30/30 ✓ | `pytest`, sin red |
-| Casos demo verificados | VPN, ahorro batería macOS, Spotlight | ver `docs/demo-checklist.md` |
-| Cobertura tools | 10 | KB, web, casos resueltos, 4×tickets, 2×automatización, 1×kb-snippet |
+| Latencia paso loop visual | 2-4 s | captura + Gemini 2.5 Flash + PyAutoGUI |
+| Tests automatizados | 30/30 ✓ | `pytest`, deterministas, sin red |
+| Cobertura tools del agente | 10 | KB, web, casos resueltos, 4×tickets, 2×automatización, snippet-kb |
 
-**Trace en vivo (modo demo activado, ejemplo real):**
+### 5.2 Evaluación de retrieval (RAG vs baseline lexical)
+
+**Dataset:** 20 consultas reales de mesa de ayuda TI en español (`evals/dataset.json`). Cada consulta lleva su `expected_sources` (1-2 archivos `.md` de la KB que deberían recuperarse).
+
+| Método | Precision@1 | Precision@3 | Precision@5 | Recall@5 | MRR | Latencia p50 | Latencia p95 |
+|---|---|---|---|---|---|---|---|
+| **RAG denso** (MiniLM + Chroma) | 60.0% | 80.0% | **85.0%** | **82.5%** | 0.69 | 14.6 ms | 39.9 ms |
+| Baseline keyword (TF + overlap) | **65.0%** | **85.0%** | 85.0% | 77.5% | **0.75** | 0.2 ms | 0.3 ms |
+
+**Hallazgo importante.** En este dataset y esta KB, el **baseline lexical supera al RAG denso** en Precision@1 (+5 pts) y MRR (+0.06). El RAG denso **gana en Recall@5** (+5 pts), recuperando segundos documentos relevantes en consultas multi-tema (ej. "Zoom en MacBook" → recupera `09_reuniones_teams_zoom.md` Y `08_macos_soporte_ti.md`).
+
+La razón es honesta: la KB tiene **12 archivos bien tematizados** cuyos nombres (`02_vpn_acceso_remoto.md`, `05_impresoras.md`, etc.) y primeros párrafos comparten vocabulario directo con las consultas reales (la gente dice "VPN", "Outlook", "Wi-Fi" — exactamente los términos del título del documento). En un escenario de **mayor escala** (cientos de archivos con vocabulario solapado, o sinónimos como "no me llega correo" vs "Outlook bloqueado"), el RAG denso despegaría — y la combinación híbrida (BM25 + dense + re-ranking) es lo que recomendamos como trabajo futuro.
+
+### 5.3 Speedup por cache LRU
+
+| Escenario | Latencia | Mejora vs cold |
+|---|---|---|
+| Cold (1er query del proceso, carga vectorstore + MiniLM) | 5 280 ms | 1.0× |
+| Warm (query nueva, modelo ya cargado) | 13.5 ms | **391×** |
+| Cached (mismo query repetido) | < 1 ms | **5 000×+** |
+
+El warm-up en startup elimina los 5 s iniciales para el usuario; el cache LRU mata el coste cuando el usuario repite la misma consulta.
+
+### 5.4 Trace en vivo (ejemplo real medido)
 
 ```
 🔧 buscar_en_base_de_conocimiento ("vpn certificado")
    📄 02_vpn_acceso_remoto.md — "Configuración VPN corporativa: …"
-   📄 04_red_wifi.md — "Pasos de reconexión …"
    📄 06_memoria_casos_resueltos.md — "Caso resuelto: certificado caducado …"
+   📄 04_red_wifi.md — "Pasos de reconexión …"
 🎫 crear ticket abc12345 — "VPN no conecta — certificado expirado"
 ✓ Hecho · 3.1 s · 1 tool · 3 KB · 1 ticket
 ```
 
-**Demo de loop visual (smoke):** "Abre Spotlight tú mismo y escribe calculadora" → 4 pasos (hotkey LeftCmd+Space, wait, type, done) ejecutados en ~8 s con miniaturas visibles paso a paso.
+### 5.5 Loop visual — smoke verificado
+
+> "Abre Spotlight tú mismo y escribe calculadora."
+
+Loop completo: 4 pasos (hotkey LeftCmd+Space → wait → type → done), ~8 s total, miniaturas y razonamiento visibles paso a paso en el panel "Automatización en vivo".
+
+### 5.6 Cómo reproducir las métricas
+
+```bash
+HELPDESK_DESKTOP_PY_EXEC=1 .venv/bin/python3 -m evals.retrieval_eval
+```
+
+Genera `evals/results_retrieval.json` con los números crudos. Reporte completo en `evals/RESULTS.md`.
 
 ## 6. Discusión
 
@@ -148,15 +180,22 @@ Nuestro proyecto combina ambas ramas:
 - Anthropic *Computer Use* (2024) — referente del loop captura/razona/actúa.
 - LangChain blog, *Tool-calling agents with LangGraph* (2024).
 
+**Análisis crítico del retrieval.** El hallazgo de la sección 5.2 — que un baseline lexical simple supera al RAG denso en Precision@1 sobre nuestra KB — es **consistente con la literatura reciente**: BM25 sigue siendo una baseline difícil de batir cuando el dominio es controlado y bien estructurado (Thakur et al., *BEIR benchmark*, 2021). El valor del RAG denso aparece cuando: (a) la KB crece a miles de documentos, (b) las consultas usan sinónimos o paráfrasis que las palabras clave no capturan, (c) se combina con un re-ranker. Por eso la recomendación general de la literatura no es "denso o lexical", sino **híbrido + re-ranking** (Lin et al., *Pyserini*; Cohere Rerank). Nuestra implementación deja la puerta abierta a esto: la cache LRU, el MMR y el endpoint de la KB son compatibles con un BM25 paralelo en una iteración futura.
+
 **Limitaciones conocidas.**
 
-- El loop visual depende mucho de que la UI no cambie radicalmente; en versiones de macOS distintas las coordenadas pueden variar.
-- La KB es estática a mano — un sistema productivo necesitaría una pipeline de re-indexación al editar.
-- Sin streaming token a token del LLM (decisión deliberada para entrega académica).
-- Memoria por proceso (no persistente entre reinicios) en step_state y agent_trace.
+- El loop visual depende de que la UI no cambie radicalmente; las coordenadas son aproximadas y dependen del OS/idioma.
+- La KB es estática — un sistema productivo necesitaría una pipeline de re-indexación al editar.
+- Sin streaming token a token del LLM (decisión deliberada).
+- Memoria por proceso en step_state, agent_trace y el run-registry del loop visual (no persiste entre reinicios).
+- Evaluación E2E del agente completo (LLM creando tickets correctos) no medida cuantitativamente — sólo verificada en smoke tests.
 
 **Mejoras futuras.**
-Set-of-Mark sobre las capturas (numerar UI elements detectados por OCR para mejorar la fiabilidad de las coordenadas), pipeline de re-indexación incremental de la KB, evaluación cuantitativa con un dataset de tickets reales (precision@k, MRR), y exportar el trace a Langfuse / LangSmith para observabilidad.
+1. **Retrieval híbrido** BM25 + denso con fusión RRF + re-ranker cross-encoder (esperamos +10 pts Precision@1 según BEIR).
+2. **Set-of-Mark prompting** sobre las capturas: OCR + numerar elementos UI clicables antes de pedir al actor que decida — debería mejorar de forma significativa la fiabilidad de coordenadas (Yang et al., 2023).
+3. **Pipeline de re-indexación incremental** al editar la KB (file watcher sobre `data/kb/`).
+4. **Evaluación E2E del agente** con dataset etiquetado: ¿categoriza bien? ¿prioridad correcta? ¿pasos sugeridos relevantes?
+5. **Observabilidad externa** (Langfuse / LangSmith) en lugar del trace en memoria.
 
 ---
 
