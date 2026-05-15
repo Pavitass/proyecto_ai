@@ -1564,3 +1564,19 @@ body {
 /* Demo toggle ----- */
 .demo-toggle { font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .demo-toggle input { margin: 0; }
+
+/* Survey widget (encuesta de diagnóstico) ----- */
+.widget-survey { border: 1px solid var(--border, #d8dee8); background: var(--elev, #f7f9fc); border-radius: 8px; padding: 12px 14px; margin: 10px 0; }
+.widget-survey .widget-prompt { font-weight: 600; font-size: 0.9rem; margin-bottom: 10px; color: var(--text, #1a2332); }
+.widget-survey-form { display: flex; flex-direction: column; gap: 12px; }
+.widget-survey-row { display: flex; flex-direction: column; gap: 6px; }
+.widget-survey-label { font-size: 0.78rem; font-weight: 500; color: var(--muted, #5c6b7f); }
+.widget-survey-row input[type="text"], .widget-survey-row textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border, #d8dee8); border-radius: 6px; font-family: inherit; font-size: 0.85rem; background: var(--panel, #fff); }
+.widget-survey-row input[type="text"]:focus, .widget-survey-row textarea:focus { outline: none; border-color: var(--accent, #1d6bc4); box-shadow: 0 0 0 2px rgba(29,107,196,.12); }
+.widget-survey-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.widget-survey-choice { display: inline-flex; align-items: center; gap: 4px; font-size: 0.82rem; padding: 4px 10px; border: 1px solid var(--border, #d8dee8); border-radius: 999px; background: var(--panel, #fff); cursor: pointer; transition: background .15s, border-color .15s; }
+.widget-survey-choice:hover { background: #eaf0f7; }
+.widget-survey-choice input[type="radio"] { margin: 0; }
+.widget-survey-choice:has(input:checked) { background: rgba(29,107,196,.12); border-color: var(--accent, #1d6bc4); }
+.widget-survey-submit { align-self: flex-end; background: var(--accent, #1d6bc4); color: #fff; border: 0; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-family: inherit; }
+.widget-survey-submit:disabled { background: #b3c0d4; cursor: default; }
