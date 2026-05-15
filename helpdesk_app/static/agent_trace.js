@@ -1,11 +1,11 @@
 /* Cliente SSE del trace en vivo del agente. */
 (function () {
-  const ICON_BY_TYPE = {
-    tool_start: "🔧",
-    tool_end: "✓",
-    kb_hit: "📄",
-    web_hit: "🌐",
-    ticket_op: "🎫",
+  const LABEL_BY_TYPE = {
+    tool_start: "TOOL",
+    tool_end: "OK",
+    kb_hit: "KB",
+    web_hit: "WEB",
+    ticket_op: "TICKET",
   };
   const PHASE_LABEL = {
     analyzing: "Analizando tu mensaje…",
@@ -27,7 +27,7 @@
     switch (event.type) {
       case "tool_start":
         li.dataset.toolName = event.name || "";
-        li.innerHTML = `<span class="trace-icon">${ICON_BY_TYPE.tool_start}</span> <code class="trace-tool">${event.name || "?"}</code> <span class="trace-args muted">${(event.args_preview || "").replace(/</g, "&lt;")}</span>`;
+        li.innerHTML = `<span class="trace-tag">${LABEL_BY_TYPE.tool_start}</span> <code class="trace-tool">${event.name || "?"}</code> <span class="trace-args muted">${(event.args_preview || "").replace(/</g, "&lt;")}</span>`;
         break;
       case "tool_end": {
         // Mark the matching tool_start as completed
@@ -42,13 +42,13 @@
         return;
       }
       case "kb_hit":
-        li.innerHTML = `<span class="trace-icon">${ICON_BY_TYPE.kb_hit}</span> <code class="trace-source">${(event.source || "").replace(/</g, "&lt;")}</code> <span class="muted">— ${(event.preview || "").replace(/</g, "&lt;")}</span>`;
+        li.innerHTML = `<span class="trace-tag">${LABEL_BY_TYPE.kb_hit}</span> <code class="trace-source">${(event.source || "").replace(/</g, "&lt;")}</code> <span class="muted">— ${(event.preview || "").replace(/</g, "&lt;")}</span>`;
         break;
       case "web_hit":
-        li.innerHTML = `<span class="trace-icon">${ICON_BY_TYPE.web_hit}</span> <a href="${(event.url || "#").replace(/"/g, "&quot;")}" target="_blank" rel="noopener">${(event.title || event.url || "").replace(/</g, "&lt;")}</a>`;
+        li.innerHTML = `<span class="trace-tag">${LABEL_BY_TYPE.web_hit}</span> <a href="${(event.url || "#").replace(/"/g, "&quot;")}" target="_blank" rel="noopener">${(event.title || event.url || "").replace(/</g, "&lt;")}</a>`;
         break;
       case "ticket_op":
-        li.innerHTML = `<span class="trace-icon">${ICON_BY_TYPE.ticket_op}</span> <strong>${event.op}</strong> ticket <code>${String(event.ticket_id || "").slice(0, 8)}</code> ${event.titulo ? "— " + String(event.titulo).replace(/</g, "&lt;") : ""}`;
+        li.innerHTML = `<span class="trace-tag">${LABEL_BY_TYPE.ticket_op}</span> <strong>${event.op}</strong> ticket <code>${String(event.ticket_id || "").slice(0, 8)}</code> ${event.titulo ? "— " + String(event.titulo).replace(/</g, "&lt;") : ""}`;
         break;
       default:
         return;

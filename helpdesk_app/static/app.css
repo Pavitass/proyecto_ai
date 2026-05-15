@@ -1580,3 +1580,12 @@ body {
 .widget-survey-choice:has(input:checked) { background: rgba(29,107,196,.12); border-color: var(--accent, #1d6bc4); }
 .widget-survey-submit { align-self: flex-end; background: var(--accent, #1d6bc4); color: #fff; border: 0; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-family: inherit; }
 .widget-survey-submit:disabled { background: #b3c0d4; cursor: default; }
+
+/* Trace tags (sin emojis) ----- */
+.trace-item .trace-tag { display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: var(--elev, #f7f9fc); border: 1px solid var(--border, #d8dee8); color: var(--muted, #5c6b7f); text-transform: uppercase; }
+.trace-item.trace-tool_start .trace-tag { background: rgba(29,107,196,.12); border-color: var(--accent, #1d6bc4); color: var(--accent, #1d6bc4); }
+.trace-item.trace-tool_start.trace-completed .trace-tag { background: #e2f5e9; border-color: #2ecc71; color: #1f8a4d; }
+.trace-item.trace-tool_start.trace-failed .trace-tag { background: #fde2e1; border-color: #c0392b; color: #b3261e; }
+.trace-item.trace-kb_hit .trace-tag { background: #eef2f7; border-color: #b8c2d4; color: #4a5a73; }
+.trace-item.trace-web_hit .trace-tag { background: #eef7f0; border-color: #b5d4be; color: #3a7048; }
+.trace-item.trace-ticket_op .trace-tag { background: #fdf3d8; border-color: #d4af6a; color: #8a5a00; }
