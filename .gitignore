@@ -1,8 +1,45 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
 .venv/
-.chroma/
-node_modules/
-data/automation_log.jsonl
-.DS_Store
+venv/
+.pytest_cache/
+
+# Secrets / config
 .env
+.env.*
+!.env.example
+
+# Vector store + runtime data
+.chroma/
+data/automation_log.jsonl
+data/automation_log.jsonl.bak
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Node / Electron
+node_modules/
+electron/node_modules/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Build / cache
+dist/
+build/
+*.tmp
+
+# Artefactos internos de desarrollo (no publicar)
+docs/superpowers/
+_deprecated_web_ui/
