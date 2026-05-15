@@ -1208,5 +1208,29 @@
     );
     loadTickets();
   </script>
+
+  <aside id="automationPanel" hidden>
+    <header>
+      <span id="apStatus">Automatización en vivo</span>
+      <button id="apAbort" type="button">Abortar</button>
+    </header>
+    <div id="apThumbWrap"><img id="apThumb" alt="captura" /></div>
+    <div id="apStepInfo"></div>
+    <ol id="apHistory"></ol>
+  </aside>
+
+  <div id="apConfirmModal" hidden>
+    <div class="ap-modal-card">
+      <h3>Confirmar paso sensible</h3>
+      <img id="apConfirmImg" alt="captura completa" />
+      <pre id="apConfirmAction"></pre>
+      <div class="ap-modal-buttons">
+        <button id="apConfirmApprove" type="button">Aprobar</button>
+        <button id="apConfirmCancel" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/automation_panel.js" defer></script>
 </body>
 </html>

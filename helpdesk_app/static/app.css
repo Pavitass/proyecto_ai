@@ -1463,3 +1463,18 @@ body {
   font-size: 0.74rem;
   margin-right: 0.35rem;
 }
+
+#automationPanel { position: fixed; right: 16px; bottom: 16px; width: 360px;
+  background: #111; color: #eee; padding: 12px; border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.4); font-family: system-ui, sans-serif; z-index: 9999; }
+#automationPanel header { display: flex; justify-content: space-between; align-items: center; }
+#automationPanel #apAbort { background: #c0392b; color: white; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+#automationPanel #apThumb { width: 100%; border-radius: 4px; margin: 8px 0; }
+#automationPanel ol { font-size: 12px; max-height: 140px; overflow-y: auto; padding-left: 18px; }
+#apConfirmModal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 10000; }
+#apConfirmModal .ap-modal-card { background: #fff; padding: 16px; border-radius: 8px; max-width: 720px; width: 90%; max-height: 80vh; overflow: auto; }
+#apConfirmModal img { width: 100%; border: 1px solid #ddd; }
+#apConfirmModal pre { background: #f4f4f4; padding: 8px; font-size: 12px; white-space: pre-wrap; }
+#apConfirmModal .ap-modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+#apConfirmModal #apConfirmApprove { background: #2ecc71; color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+#apConfirmModal #apConfirmCancel { background: #95a5a6; color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
