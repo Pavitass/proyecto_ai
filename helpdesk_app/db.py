@@ -46,6 +46,9 @@ def _migrate_tickets_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE tickets ADD COLUMN resolucion_final TEXT NOT NULL DEFAULT ''")
     if "resolved_at" not in cols:
         conn.execute("ALTER TABLE tickets ADD COLUMN resolved_at TEXT")
+    if "thread_id" not in cols:
+        conn.execute("ALTER TABLE tickets ADD COLUMN thread_id TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tickets_thread ON tickets(thread_id)")
 
 
 def crear_ticket(
@@ -56,17 +59,19 @@ def crear_ticket(
     pasos_sugeridos: str,
     fuentes_kb: list[str],
     estado: str = "abierto",
+    thread_id: str | None = None,
 ) -> str:
     tid = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    thread_clean = thread_id.strip() if isinstance(thread_id, str) and thread_id.strip() else None
     conn = _conn()
     try:
         conn.execute(
             """
             INSERT INTO tickets (
                 id, titulo, categoria, prioridad, descripcion_usuario,
-                pasos_sugeridos, fuentes_kb, estado, motivo_escalacion, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pasos_sugeridos, fuentes_kb, estado, motivo_escalacion, created_at, thread_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tid,
@@ -79,6 +84,7 @@ def crear_ticket(
                 estado,
                 None,
                 now,
+                thread_clean,
             ),
         )
         conn.commit()
@@ -146,6 +152,18 @@ def listar_tickets(limit: int = 50) -> list[dict[str, Any]]:
         rows = conn.execute(
             "SELECT * FROM tickets ORDER BY datetime(created_at) DESC LIMIT ?",
             (limit,),
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def listar_tickets_por_thread(thread_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM tickets WHERE thread_id = ? ORDER BY datetime(created_at) DESC LIMIT ?",
+            (thread_id, limit),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
     finally:
