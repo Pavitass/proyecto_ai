@@ -60,7 +60,7 @@ CHAT_MODEL = os.getenv("HELPDESK_CHAT_MODEL", _default_chat)
 LLM_TEMPERATURE = float(os.getenv("HELPDESK_TEMPERATURE", "0.15"))
 
 # Modelo solo para describir capturas con Gemini (backend google).
-VISION_MODEL = os.getenv("HELPDESK_VISION_MODEL", "gemini-2.0-flash")
+VISION_MODEL = os.getenv("HELPDESK_VISION_MODEL", "gemini-2.5-flash")
 
 
 def resolve_vision_backend() -> str:

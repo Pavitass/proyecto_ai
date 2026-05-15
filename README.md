@@ -261,7 +261,7 @@ HELPDESK_DESKTOP_PY_EXEC=1 .venv/bin/python3 -m pytest tests/ -v
 | `DEEPSEEK_API_KEY` | — | Alternativa a Gemini para chat. |
 | `HELPDESK_LLM` | `auto` | `auto` / `google` / `deepseek`. |
 | `HELPDESK_CHAT_MODEL` | `gemini-2.0-flash` | Modelo de chat. |
-| `HELPDESK_VISION_MODEL` | `gemini-2.0-flash` | Modelo de visión (loop). |
+| `HELPDESK_VISION_MODEL` | `gemini-2.5-flash` | Modelo de visión (loop). |
 | `HELPDESK_EMBEDDINGS` | `hf` | `hf` (local) o `google`. |
 | `HELPDESK_HF_EMBEDDING_MODEL` | multilingual MiniLM | Modelo HF de embeddings. |
 | `HELPDESK_DESKTOP_PY_EXEC` | — | Pon `1` para activar PyAutoGUI. |
