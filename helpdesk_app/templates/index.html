@@ -276,6 +276,76 @@
       renderShotPreview();
     });
 
+    async function _absorbImageFile(file) {
+      if (!file || !file.type || !file.type.startsWith("image/")) return false;
+      if (pendingShots.length >= 2) {
+        alert("Máximo 2 imágenes adjuntas. Quita una primero.");
+        return false;
+      }
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      try {
+        pendingShots.push(await scaleDataUrl(dataUrl, 1280));
+      } catch (_) {
+        pendingShots.push(String(dataUrl));
+      }
+      renderShotPreview();
+      return true;
+    }
+
+    async function _handlePasteEvent(e) {
+      if (!visionAvailable) return;
+      const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+      let pastedAny = false;
+      for (const item of items) {
+        if (item.kind === "file" && (item.type || "").startsWith("image/")) {
+          const file = item.getAsFile();
+          const ok = await _absorbImageFile(file);
+          if (ok) pastedAny = true;
+        }
+      }
+      if (pastedAny) e.preventDefault();
+    }
+
+    // Pegado en el textarea principal
+    document.getElementById("msg").addEventListener("paste", _handlePasteEvent);
+    // Pegado en cualquier parte de la página (cuando el foco no está en el textarea)
+    document.addEventListener("paste", (e) => {
+      if (document.activeElement && document.activeElement.id === "msg") return; // ya manejado arriba
+      _handlePasteEvent(e);
+    });
+
+    // Drag-and-drop sobre el textarea (bonus: arrastrar imagen al input también funciona)
+    const _msgDropZone = document.getElementById("msg");
+    if (_msgDropZone) {
+      ["dragover", "dragenter"].forEach((ev) =>
+        _msgDropZone.addEventListener(ev, (e) => {
+          if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) {
+            e.preventDefault();
+            _msgDropZone.classList.add("msg-dragover");
+          }
+        })
+      );
+      ["dragleave", "dragend", "drop"].forEach((ev) =>
+        _msgDropZone.addEventListener(ev, () => _msgDropZone.classList.remove("msg-dragover"))
+      );
+      _msgDropZone.addEventListener("drop", async (e) => {
+        if (!visionAvailable) return;
+        const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter(
+          (f) => (f.type || "").startsWith("image/")
+        );
+        if (!files.length) return;
+        e.preventDefault();
+        for (const f of files.slice(0, 2 - pendingShots.length)) {
+          await _absorbImageFile(f);
+        }
+      });
+    }
+
     document.getElementById("btnShotScreen").addEventListener("click", async () => {
       if (!visionAvailable) return;
       if (pendingShots.length >= 2) {

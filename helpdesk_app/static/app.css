@@ -1589,3 +1589,6 @@ body {
 .trace-item.trace-kb_hit .trace-tag { background: #eef2f7; border-color: #b8c2d4; color: #4a5a73; }
 .trace-item.trace-web_hit .trace-tag { background: #eef7f0; border-color: #b5d4be; color: #3a7048; }
 .trace-item.trace-ticket_op .trace-tag { background: #fdf3d8; border-color: #d4af6a; color: #8a5a00; }
+
+/* Drag-over hint en el textarea ----- */
+#msg.msg-dragover { outline: 2px dashed var(--accent, #1d6bc4); outline-offset: -3px; background: rgba(29,107,196,.05); }
