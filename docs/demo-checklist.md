@@ -16,6 +16,13 @@
 - [ ] Pregunta: "mi VPN no conecta, qué hago" → debe responder en < 3s sin tocar la web.
 - [ ] Pregunta: "busca en internet la versión última de Cisco AnyConnect" → debe avisar antes de ir a web.
 
+## Demo step-cards
+- [ ] En el chat: "Mi VPN no conecta."
+- [ ] Las opciones del plan deben aparecer como tarjetas (no lista numerada plana).
+- [ ] Marcar paso 1 como ✓ — debe ser instantáneo (sin nuevo turno del LLM).
+- [ ] Marcar paso 2 como ✕ Atascado con nota corta — el LLM responde con `### Ajuste al paso 2`.
+- [ ] Si el LLM emite `choice` o `severity`, el widget aparece debajo del mensaje y es interactivo.
+
 ## Cierre
 - [ ] Mostrar `data/automation_log.jsonl` (transparencia: cada paso queda registrado).
 - [ ] Mostrar `data/tickets.sqlite3` con el ticket creado durante la sesión.
