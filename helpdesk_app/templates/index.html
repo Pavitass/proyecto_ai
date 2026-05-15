@@ -1119,6 +1119,16 @@
         const displayMd = window.LiveSheet ? window.LiveSheet.strip(rawReply) : rawReply;
         const wrap = addMessage("assistant", renderMarkdown(displayMd), { isMarkdown: true });
         if (window.LiveSheet) window.LiveSheet.afterAssistantReply(rawReply, wrap);
+        if (typeof window.helpdeskRenderWidgets === "function") {
+          try {
+            const m = rawReply && rawReply.match(/```helpdesk-ui\s*([\s\S]*?)```/i);
+            if (m) {
+              const data = JSON.parse(m[1]);
+              const container = wrap.querySelector(".md-content") || wrap;
+              window.helpdeskRenderWidgets(data, container);
+            }
+          } catch (_) {}
+        }
         if (j.desktop_plan && Array.isArray(j.desktop_plan.actions) && j.desktop_plan.actions.length) {
           attachDesktopPlanPanel(wrap, j.desktop_plan);
         }

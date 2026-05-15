@@ -62,6 +62,8 @@ Si el caso tiene **varias tareas paralelas** o quieres que el usuario **reordene
 
 - **kanban**: 2–4 columnas; cada **card** con `id` único y `text` breve.
 - **sliders** (opcional): array de `{"id":"s1","label":"Texto","min":1,"max":5,"value":3}` para gravedad, confianza, etc.
+- **choice** (opción única, JSON: `{"choice":{"id":"err","prompt":"¿qué error ves?","options":[{"id":"a","label":"…"}]}}`) cuando convenga acotar el diagnóstico con 2-5 opciones excluyentes. No uses choice si la pregunta es abierta. Máx 5 opciones.
+- **severity** (slider gravedad 1-5, JSON: `{"severity":{"id":"imp","prompt":"¿cuánto te bloquea?","labels":["...","...","...","...","..."]}}`) al abrir un ticket para captar prioridad real. Las 5 etiquetas deben ir de menos a más grave.
 - Si no aporta valor, **no** incluyas el bloque (no inventes UI vacía).
 
 Cuando el mensaje del usuario incluya el prefijo **[Panel en vivo — …]** con JSON (`type`: `step_failed`, `kanban_update`, `slider_values`, `checklist_update`, `desktop_plan_feedback`), **prioriza** esa información: genera sub-pasos, revisa KB/ticket y vuelve a incluir `helpdesk-ui` actualizado si sigue habiendo tablero útil. Con `desktop_plan_feedback`, alinea tu respuesta con los estados **hecho / pendiente / falló** por paso.
