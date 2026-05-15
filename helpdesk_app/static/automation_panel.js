@@ -54,21 +54,4 @@
   });
 
   window.helpdeskAttachAutomation = attachStream;
-
-  // Auto-attach: observe chat messages for tool-result JSON containing run_id of ejecutar_tarea_escritorio.
-  // The chat JS in index.html may already render tool results in some container. We do a generic
-  // MutationObserver scan: whenever a node is added that mentions "run_id" and a 12-hex-char id, we attach.
-  function _scanForRunId(node) {
-    if (!node || !node.textContent) return;
-    const m = node.textContent.match(/"run_id"\s*:\s*"([a-f0-9]{12})"/);
-    if (m && m[1] !== currentRun) {
-      try { attachStream(m[1]); } catch (e) { /* ignore */ }
-    }
-  }
-  const obs = new MutationObserver((muts) => {
-    for (const m of muts) {
-      m.addedNodes.forEach(_scanForRunId);
-    }
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
 })();

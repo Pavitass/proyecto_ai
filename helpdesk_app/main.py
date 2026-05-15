@@ -114,6 +114,7 @@ class ChatOut(BaseModel):
     thread_id: str
     vision_used: bool = False
     desktop_plan: dict | None = None
+    desktop_run: dict | None = None
     sources: list[SourceOut] = Field(default_factory=list)
     tool_calls_used: list[ToolCallOut] = Field(default_factory=list)
     web_search_used: bool = False
@@ -209,6 +210,30 @@ def _tool_message_content(content) -> str:
                 parts.append(block)
         return "".join(parts)
     return str(content)
+
+
+def _extract_desktop_run(msgs: list) -> dict | None:
+    for m in reversed(msgs):
+        if not isinstance(m, ToolMessage):
+            continue
+        if getattr(m, "name", None) != "ejecutar_tarea_escritorio":
+            continue
+        raw = _tool_message_content(m.content).strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("run_id"):
+            return {
+                "run_id": data["run_id"],
+                "status": data.get("status"),
+                "steps": data.get("steps"),
+            }
+    return None
 
 
 def _extract_desktop_plan(msgs: list) -> dict | None:
@@ -377,6 +402,7 @@ def chat(body: ChatIn):
         )
     reply = strip_helpdesk_ui_block(reply)
     desktop_plan = _extract_desktop_plan(msgs)
+    desktop_run = _extract_desktop_run(msgs)
     sources, web_search_used = _sources_from_trace(snap)
     tool_calls_used = _extract_tool_trace_last_turn(msgs)
     if not web_search_used:
@@ -386,6 +412,7 @@ def chat(body: ChatIn):
         thread_id=body.thread_id,
         vision_used=vision_used,
         desktop_plan=desktop_plan,
+        desktop_run=desktop_run,
         sources=sources,
         tool_calls_used=tool_calls_used,
         web_search_used=web_search_used,

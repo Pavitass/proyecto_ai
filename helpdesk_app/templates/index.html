@@ -1117,6 +1117,9 @@
         if (j.desktop_plan && Array.isArray(j.desktop_plan.actions) && j.desktop_plan.actions.length) {
           attachDesktopPlanPanel(wrap, j.desktop_plan);
         }
+        if (j.desktop_run && j.desktop_run.run_id && window.helpdeskAttachAutomation) {
+          window.helpdeskAttachAutomation(j.desktop_run.run_id);
+        }
         attachSourcesToolsPanel(wrap, j);
         updateDesktopHint();
         return j;
