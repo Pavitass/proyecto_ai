@@ -26,13 +26,17 @@ class LoopOutcome:
 _AUDIT_PATH = Path(BASE_DIR) / "data" / "automation_log.jsonl"
 
 
+def _auto_hide_enabled() -> bool:
+    import os
+    return os.getenv("HELPDESK_AUTO_HIDE_ON_LOOP", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def _auto_hide_foreground_window(sleep_fn) -> None:
     """Oculta la ventana en primer plano (presumiblemente la app helpdesk) al inicio
     del loop, para que no aparezca en las capturas y confunda al actor de visión.
     Se puede desactivar con HELPDESK_AUTO_HIDE_ON_LOOP=0."""
-    import os
     import sys
-    if os.getenv("HELPDESK_AUTO_HIDE_ON_LOOP", "1").strip().lower() in ("0", "false", "no", "off"):
+    if not _auto_hide_enabled():
         return
     try:
         import pyautogui
@@ -43,15 +47,37 @@ def _auto_hide_foreground_window(sleep_fn) -> None:
             # Win+Flecha abajo minimiza la ventana activa
             pyautogui.hotkey("win", "down")
         else:
-            # Linux: minimizar con Super+H si aplica, si no, ignorar
             try:
                 pyautogui.hotkey("winleft", "h")
             except Exception:
                 pass
-        sleep_fn(0.6)  # da tiempo a que el SO ejecute el hide antes de la primera captura
+        sleep_fn(0.6)
     except Exception:
-        # Si pyautogui falla por permisos, el actor seguirá viendo la UI pero al menos
-        # tiene la instrucción de ignorarla.
+        pass
+
+
+def _auto_restore_helpdesk_window(sleep_fn) -> None:
+    """Trae de vuelta la app helpdesk al terminar el loop, para que el usuario siga viendo
+    el resultado (resumen, panel de trace, ticket, etc.). Solo se ejecuta si el auto-hide
+    estaba activo. Usa Cmd+Tab / Alt+Tab que devuelve a la app anterior (que en condiciones
+    normales es la helpdesk que acabamos de ocultar)."""
+    import sys
+    if not _auto_hide_enabled():
+        return
+    try:
+        import pyautogui
+        if sys.platform == "darwin":
+            # Cmd+Tab vuelve a la app anterior (la que acabamos de ocultar)
+            pyautogui.hotkey("command", "tab")
+        elif sys.platform.startswith("win"):
+            pyautogui.hotkey("alt", "tab")
+        else:
+            try:
+                pyautogui.hotkey("alt", "tab")
+            except Exception:
+                pass
+        sleep_fn(0.4)
+    except Exception:
         pass
 
 
@@ -179,3 +205,5 @@ def run_loop(
         return outcome
     finally:
         ev.finish_run(state.run_id)
+        # Trae de vuelta la app helpdesk para que el usuario siga viendo el resultado
+        _auto_restore_helpdesk_window(sleep_fn)
