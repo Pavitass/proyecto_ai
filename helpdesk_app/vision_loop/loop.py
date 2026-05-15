@@ -26,6 +26,35 @@ class LoopOutcome:
 _AUDIT_PATH = Path(BASE_DIR) / "data" / "automation_log.jsonl"
 
 
+def _auto_hide_foreground_window(sleep_fn) -> None:
+    """Oculta la ventana en primer plano (presumiblemente la app helpdesk) al inicio
+    del loop, para que no aparezca en las capturas y confunda al actor de visión.
+    Se puede desactivar con HELPDESK_AUTO_HIDE_ON_LOOP=0."""
+    import os
+    import sys
+    if os.getenv("HELPDESK_AUTO_HIDE_ON_LOOP", "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+    try:
+        import pyautogui
+        if sys.platform == "darwin":
+            # Cmd+H oculta la app activa (browser o Electron)
+            pyautogui.hotkey("command", "h")
+        elif sys.platform.startswith("win"):
+            # Win+Flecha abajo minimiza la ventana activa
+            pyautogui.hotkey("win", "down")
+        else:
+            # Linux: minimizar con Super+H si aplica, si no, ignorar
+            try:
+                pyautogui.hotkey("winleft", "h")
+            except Exception:
+                pass
+        sleep_fn(0.6)  # da tiempo a que el SO ejecute el hide antes de la primera captura
+    except Exception:
+        # Si pyautogui falla por permisos, el actor seguirá viendo la UI pero al menos
+        # tiene la instrucción de ignorarla.
+        pass
+
+
 def _audit(run_id: str, payload: dict) -> None:
     try:
         _AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -69,6 +98,10 @@ def run_loop(
         ev.emit(state, "fail", {"reason": outcome.reason})
         ev.finish_run(state.run_id)
         return outcome
+
+    # Auto-hide la app helpdesk al inicio para que no aparezca en las capturas
+    # (evita el bucle recursivo donde el actor confunde nuestra propia UI con el SO).
+    _auto_hide_foreground_window(sleep_fn)
 
     history: list[HistoryItem] = []
     t0 = time.time()
